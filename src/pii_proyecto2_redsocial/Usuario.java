@@ -13,7 +13,7 @@ import javax.swing.ImageIcon;
  * @author emyca
  */
 public class Usuario implements Serializable{
-    enum Genero{
+    static enum Genero{
         FEMENINO, MASCULINO;
     }
     
@@ -28,6 +28,7 @@ public class Usuario implements Serializable{
     protected String user;
     protected String nombre;
     protected String contra;
+    protected String bio;
     protected Genero genero;
     protected EstadoCuenta estado;
     protected TipoCuenta tipoCuenta;
@@ -45,6 +46,7 @@ public class Usuario implements Serializable{
         this.fecha = fecha;
         this.fotoPerfil = fotoPerfil;
         this.edad = edad;
+        this.bio="";
     }
     
     public String getUser(){
@@ -118,7 +120,13 @@ public class Usuario implements Serializable{
     public void setEdad(int edad) {
         this.edad = edad;
     }
-    
-    
+
+    public String getBio() {
+        return bio;
+    }
+
+    public void setBio(String bio) {
+        this.bio = bio;
+    }
     
 }

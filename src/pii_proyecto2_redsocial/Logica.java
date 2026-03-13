@@ -5,6 +5,7 @@
 package pii_proyecto2_redsocial;
 
 import java.io.*;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.Date;
@@ -16,24 +17,53 @@ import javax.swing.ImageIcon;
  */
 public class Logica {
     private ArrayList<Usuario> usuarios;
+    private Usuario extraerUsers;
     private int usuarioLogged;
+    private int usuarioSelec;
     private File carpetaRaiz;
     private File carpetaStickers;
     private RandomAccessFile users;
     
-    public Logica(){
-        try{
-        carpetaRaiz = new File("scr/INSTA_RAIZ/");
-        crearCarpetaRaiz();
-        carpetaStickers = new File("scr/INSTA_RAIZ/stickers_globales");
-        crearCarpetaSticker();
-        users=new RandomAccessFile("scr/INSTA_RAIZ/users.ins","rw");
-        usuarios= new ArrayList<>();//que extraiga los usuarios de los archivos
-        }catch(IOException e){
+    public Logica() {
+        try {
+            carpetaRaiz = new File("src/INSTA_RAIZ/");
+            crearCarpetaRaiz();
+
+            carpetaStickers = new File("src/INSTA_RAIZ/stickers_globales");
+            crearCarpetaSticker();
+
+            usuarios = new ArrayList<>();
+
+            File archivo = new File("src/INSTA_RAIZ/users.ins");
+
+            leerUsuarios(archivo);
+
+        } catch (IOException | ClassNotFoundException e) {
             System.out.println(e.getMessage());
         }
-        
     }
+    
+    private void leerUsuarios(File archivo) throws IOException, ClassNotFoundException {
+            if (archivo.exists() && archivo.length() > 0) {
+
+                ObjectInputStream in = new ObjectInputStream(new FileInputStream(archivo));
+
+                usuarios = (ArrayList<Usuario>) in.readObject();
+
+                in.close();
+            }
+    }
+    
+    private void guardarUsuarios() {
+    try {
+        ObjectOutputStream out = new ObjectOutputStream(
+                new FileOutputStream("src/INSTA_RAIZ/users.ins"));
+        out.writeObject(usuarios);
+        out.close();
+    } catch (IOException e) {
+        System.out.println(e.getMessage());
+    }
+}
     
     private void crearCarpetaRaiz(){
         if(carpetaRaiz.exists())
@@ -50,7 +80,7 @@ public class Logica {
     }
     
     private String getPath(String user){
-        return "scr/INSTA_RAIZ/"+user.toUpperCase();
+        return "src/INSTA_RAIZ/"+user.toUpperCase();
     }
     
     private void crearCarpetasUser (String user) throws IOException{
@@ -90,10 +120,10 @@ public class Logica {
     private boolean Login(String nombre_login, String contraseña_login, int indexUsuario){
         if (indexUsuario<usuarios.size()){
             if(usuarios.get(indexUsuario)!=null){
-                if (usuarios.get(indexUsuario).getEstado().equals("INACTIVO"))
+                if (usuarios.get(indexUsuario).getEstado() == Usuario.EstadoCuenta.INACTIVO)
                     return Login(nombre_login, contraseña_login, indexUsuario+1);
 
-                if (usuarios.get(indexUsuario).getNombre().equals(nombre_login) && usuarios.get(indexUsuario).getContra().equals(contraseña_login)){
+                if (usuarios.get(indexUsuario).getUser().equals(nombre_login) && usuarios.get(indexUsuario).getContra().equals(contraseña_login)){
                     this.usuarioLogged=indexUsuario;
                     return true;
                 }else{
@@ -110,7 +140,7 @@ public class Logica {
         return Login(nombre_login, contraseña_login, 0);
     }
     
-    public ArrayList<Integer> verificarDatos(String nombre, String user, String contra, String edad) {
+    private ArrayList<Integer> verificarDatos(String nombre, String user, String contra, String edad) {
         ArrayList<Integer> errores = new ArrayList<>();
 
         if (nombre.isBlank()) {
@@ -144,6 +174,14 @@ public class Logica {
                 }
             }
         }
+        
+        boolean largoOk = contra.length() >= 8;
+        boolean mayusOk = !contra.equals(contra.toLowerCase()) && !contra.equals("");
+        boolean symbolOk = contra.matches(".*[!@#$%^&*()_+\\-=\\[\\]{};':\"\\\\|,.<>\\/?].*");
+
+        if (!largoOk || !mayusOk || !symbolOk) {
+            errores.add(8);
+        }
         return errores;
     }
 
@@ -155,11 +193,13 @@ public class Logica {
                 Date fecha = Calendar.getInstance().getTime();
                 Usuario nuevoUser=null;
                 if (tipoCuenta.equals("PUBLICA"))
-                    new UsuarioPublico(user, nombre, contra, genero, "ACTIVO", tipoCuenta, fecha, fotoPerfil, Integer.parseInt(edad));
+                    nuevoUser=new UsuarioPublico(user, nombre, contra, genero, "ACTIVO", tipoCuenta, fecha, fotoPerfil, Integer.parseInt(edad));
                 else
-                    new UsuarioPrivado(user, nombre, contra, genero, "ACTIVO", tipoCuenta, fecha, fotoPerfil, Integer.parseInt(edad));
+                    nuevoUser=new UsuarioPrivado(user, nombre, contra, genero, "ACTIVO", tipoCuenta, fecha, fotoPerfil, Integer.parseInt(edad));
                 usuarios.add(nuevoUser);
+                guardarUsuarios();
                 crearCarpetasUser(user);
+                initFilesUser(user);
                 errores.add(1);
             }catch(IOException e){
                 System.out.println(e.getMessage());
@@ -168,4 +208,194 @@ public class Logica {
         }
         return errores;
     }
+    
+    public ArrayList<Integer> modificarDatos(String nombre, String user, String contra, String genero, String edad, ImageIcon fotoPerfil, String tipoCuenta, String bio) {
+        ArrayList<Integer> modificaciones = verificarNuevosDatos(nombre, user, contra, edad, bio, genero, tipoCuenta);
+        
+        if(modificaciones.contains(1)){
+            usuarios.get(usuarioLogged).setNombre(nombre);
+        }
+        
+        if(modificaciones.contains(2)){
+            File carpetaAntigua = new File(getPath(usuarios.get(usuarioLogged).getUser()));
+            File carpetaNueva = new File(getPath(user));
+            carpetaAntigua.renameTo(carpetaNueva);
+            
+            usuarios.get(usuarioLogged).setUser(user);
+        }
+        
+        if(modificaciones.contains(3)){
+            usuarios.get(usuarioLogged).setContra(contra);
+        }
+        
+        if(modificaciones.contains(4)){
+            usuarios.get(usuarioLogged).setEdad(Integer.parseInt(edad));
+        }
+        
+        if(modificaciones.contains(5)){
+            usuarios.get(usuarioLogged).setBio(bio);
+        }
+        
+        if(modificaciones.contains(6)){
+            usuarios.get(usuarioLogged).setGenero(genero);
+        }
+        
+        if(fotoPerfil!=null){
+            usuarios.get(usuarioLogged).setFotoPerfil(fotoPerfil);
+        }
+        
+        if(modificaciones.contains(7)){
+            usuarios.get(usuarioLogged).setTipoCuenta(tipoCuenta);
+            Usuario userModificado=null;
+            if (tipoCuenta.equals("PUBLICA"))
+                    userModificado=new UsuarioPublico(usuarios.get(usuarioLogged).getUser(), usuarios.get(usuarioLogged).getNombre(), usuarios.get(usuarioLogged).getContra(), usuarios.get(usuarioLogged).getGenero().name(), usuarios.get(usuarioLogged).getEstado().name(), usuarios.get(usuarioLogged).getTipoCuenta().name(), usuarios.get(usuarioLogged).getFecha(), usuarios.get(usuarioLogged).getFotoPerfil(), usuarios.get(usuarioLogged).getEdad());
+                else
+                    userModificado=new UsuarioPrivado(usuarios.get(usuarioLogged).getUser(), usuarios.get(usuarioLogged).getNombre(), usuarios.get(usuarioLogged).getContra(), usuarios.get(usuarioLogged).getGenero().name(), usuarios.get(usuarioLogged).getEstado().name(), usuarios.get(usuarioLogged).getTipoCuenta().name(), usuarios.get(usuarioLogged).getFecha(), usuarios.get(usuarioLogged).getFotoPerfil(), usuarios.get(usuarioLogged).getEdad());         
+            usuarios.set(usuarioLogged, userModificado);
+        }
+        
+        guardarUsuarios();
+        return modificaciones;
+    }
+    
+    private ArrayList<Integer> verificarNuevosDatos(String nombre, String user, String contra, String edad, String bio, String genero, String tipoCuenta) {
+        ArrayList<Integer> modificacion = new ArrayList<>();
+
+        if (!nombre.equals(usuarios.get(usuarioLogged).getNombre()) && !nombre.isBlank()) {
+            modificacion.add(1);
+        }
+        if (!user.equals(usuarios.get(usuarioLogged).getUser()) && !user.isBlank()) {
+            if(usuarios!=null){
+                for (Usuario usuar : usuarios) {
+                    if(usuar!=null){
+                        if (user.equals(usuar.getUser())) {
+                            modificacion.add(8);
+                            break;
+                        }
+                    }
+                }
+                modificacion.add(2);
+            }
+        }
+        if (!contra.equals(usuarios.get(usuarioLogged).getContra()) && !contra.isBlank()) {
+            boolean largoOk = contra.length() >= 8;
+            boolean mayusOk = !contra.equals(contra.toLowerCase()) && !contra.equals("");
+            boolean symbolOk = contra.matches(".*[!@#$%^&*()_+\\-=\\[\\]{};':\"\\\\|,.<>\\/?].*");
+
+            if (largoOk && mayusOk && symbolOk) {
+                modificacion.add(3);
+            }
+        }
+        if (!edad.equals(usuarios.get(usuarioLogged).getEdad()) && !edad.isBlank()) {
+            try {
+                if (Integer.parseInt(edad) > 0) {
+                    modificacion.add(4);
+                }
+            } catch (NumberFormatException e) {
+                modificacion.add(9); // Edad no es un número
+            }
+        }
+        
+        if(!bio.equals(usuarios.get(usuarioLogged).getBio()) && !bio.isBlank()){
+            modificacion.add(5);
+        }
+        
+        if(!genero.equals(usuarios.get(usuarioLogged).getGenero().name())){
+            modificacion.add(6);
+        }
+        
+        if(!tipoCuenta.equals(usuarios.get(usuarioLogged).getTipoCuenta().name())){
+            modificacion.add(7);
+        }
+        return modificacion;
+    }
+    
+    private void initFilesUser(String user) throws IOException{
+        RandomAccessFile followers = getFileFollowers(user);
+        RandomAccessFile following = getFileFollowing(user);
+        
+        if(followers.length()==0){
+            followers.writeInt(0);
+            followers.close();
+        }
+        if(following.length()==0){
+            following.writeInt(0);
+            following.close();
+        }    
+    }
+    
+    public String getUsuario(int indicador){
+        return usuarios.get((indicador==0)? usuarioLogged:usuarioSelec).getUser();
+    }
+    
+    public String getUsuarioNombre(int indicador){
+        return usuarios.get((indicador==0)? usuarioLogged: usuarioSelec).getNombre();
+    }
+    
+    public String getUsuarioLoggedEdad(){
+        return String.valueOf(usuarios.get(usuarioLogged).getEdad());
+    }
+    
+    public String getUsuarioBio(int indicador){
+        return usuarios.get((indicador==0)? usuarioLogged:usuarioSelec).getBio();
+    }
+    
+    public String getUsuarioLoggedFecha(){
+        SimpleDateFormat formato = new SimpleDateFormat ("dd/MM/yy");
+        return formato.format(usuarios.get(usuarioLogged).getFecha());
+    }
+    
+    public String getUsuarioLoggedGenero(){
+        if(usuarios.get(usuarioLogged).getGenero().name().equals("MASCULINO")){
+            return "M";
+        }
+        return "F";
+    }
+    
+    public String getUsuarioLoggedContra(){
+        return usuarios.get(usuarioLogged).getContra();
+    }
+    
+    public String getUsuarioTipo(int indicador){
+        if(usuarios.get((indicador==0)? usuarioLogged:usuarioSelec).getTipoCuenta().name().equals("PRIVADA")){
+            return "Privada";
+        }
+        return "Publica";
+    }
+    
+    public int getUsuarioFollowers(int indicador) {
+    try (RandomAccessFile followers = getFileFollowers(getUsuario(indicador))) {
+        if (followers.length() < 4) return 0;
+        followers.seek(0);
+        return followers.readInt();
+    } catch (IOException e) {
+        System.out.println("Error al leer followers: " + e.getMessage());
+        return 0;
+    }
+}
+
+    public int getUsuarioFollowing(int indicador) {
+        try (RandomAccessFile following = getFileFollowing(getUsuario(indicador))) {
+            if (following.length() < 4) return 0;
+            following.seek(0);
+            return following.readInt();
+        } catch (IOException e) {
+            System.out.println("Error al leer following: " + e.getMessage());
+            return 0;
+        }
+    }
+    
+    public ImageIcon getUsuarioFoto(int indicador){
+        return usuarios.get((indicador==0)? usuarioLogged:usuarioSelec).getFotoPerfil();
+    }
+    
+    public void getUsuarioSelec(String user){
+        if(!usuarios.isEmpty()){
+            for(int indexUsuario=0; indexUsuario<usuarios.size();indexUsuario++){
+                if(usuarios.get(indexUsuario).getUser().equals(user))
+                    usuarioSelec=indexUsuario;
+            }
+        }   
+    }
+    
 }
