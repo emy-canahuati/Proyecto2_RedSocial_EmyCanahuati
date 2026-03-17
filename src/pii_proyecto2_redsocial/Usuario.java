@@ -1,10 +1,11 @@
-/*
+   /*
  * Click nbfs://nbhost/SystemFileSystem/Templates/Licenses/license-default.txt to change this license
  * Click nbfs://nbhost/SystemFileSystem/Templates/Classes/Class.java to edit this template
  */
 package pii_proyecto2_redsocial;
 
 import java.io.Serializable;
+import java.util.ArrayList;
 import java.util.Date;
 import javax.swing.ImageIcon;
 
@@ -35,6 +36,9 @@ public class Usuario implements Serializable{
     protected Date fecha;
     protected ImageIcon fotoPerfil;
     protected int edad;
+    //borrar despues
+    private ArrayList<String> followersList;
+    private ArrayList<String> followingList;
     
     public Usuario(String user, String nombre, String contra, String genero, String estado, String tipoCuenta, Date fecha, ImageIcon fotoPerfil, int edad) {
         this.user = user;
@@ -47,6 +51,9 @@ public class Usuario implements Serializable{
         this.fotoPerfil = fotoPerfil;
         this.edad = edad;
         this.bio="";
+        //borrar despues
+        this.followersList = new ArrayList<>();
+        this.followingList = new ArrayList<>();
     }
     
     public String getUser(){
@@ -129,4 +136,32 @@ public class Usuario implements Serializable{
         this.bio = bio;
     }
     
+    public ArrayList<String> getFollowersList() {
+        if (followersList == null) {
+            followersList = new ArrayList<>();
+        }
+        return followersList;
+    }
+
+    
+    public ArrayList<String> getFollowingList() {
+        if (followingList == null) {
+            followingList = new ArrayList<>();
+        }
+        return followingList;
+    }
+    
+    // Métodos útiles para que la lógica funcione después
+    public void agregarSeguidor(String usernameSeguidor) {
+        if (!followersList.contains(usernameSeguidor)) {
+            followersList.add(usernameSeguidor);
+        }
+    }
+
+    public void seguirA(String usernameA_Seguir) {
+        if (!followingList.contains(usernameA_Seguir)) {
+            followingList.add(usernameA_Seguir);
+        }
+    }
+
 }
