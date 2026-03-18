@@ -11,6 +11,7 @@ import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.Map;
 import javax.swing.ImageIcon;
 import javax.swing.SwingUtilities;
 
@@ -33,6 +34,8 @@ public class Logica {
     private ObjectOutputStream socketOut;
     private ObjectInputStream socketIn;
     private ChatListener chatListener;
+    private String chatActivoActual = "";
+    private final Object lockChats = new Object();
 
     public Logica() {
         try {
@@ -43,6 +46,7 @@ public class Logica {
             carpetaStickers.mkdir();
 
             usuarios = new ArrayList<>();
+            mensajes = new ArrayList<>();
 
             File archivoUsuarios = new File("src/INSTA_RAIZ/users.ins");
 
@@ -52,6 +56,111 @@ public class Logica {
             System.out.println(e.getMessage());
         }
     }
+
+public void crearCuentasDefault() {
+    String[] usersDefault = {"luna_estrella", "carlos_dev", "maria_foto"};
+    for (String u : usersDefault) {
+        for (Usuario existente : usuarios) {
+            if (existente.getUser().equals(u)) return;
+        }
+    }
+
+    try {
+        Date fecha = Calendar.getInstance().getTime();
+        ImageIcon img1= new ImageIcon("src/Imagenes/marvel.jpg");
+        ImageIcon img2= new ImageIcon("src/Imagenes/jorgue.jpg");
+        ImageIcon img3= new ImageIcon("src/Imagenes/game.png");
+        
+        UsuarioPublico u1 = new UsuarioPublico(
+            "marvel", "Marvel Entertainment", "Hola123!",
+            "MASCULINO", "ACTIVO", "PUBLICA", fecha, img1, 24
+        );
+        usuarios.add(u1);
+        crearCarpetasUser("marvel");
+
+        UsuarioPublico u2 = new UsuarioPublico(
+            "jorgue_her", "Jorge Rivera-Herrans", "Legendary123!",
+            "MASCULINO", "ACTIVO", "PUBLICA", fecha, img2, 28
+        );
+        usuarios.add(u2);
+        crearCarpetasUser("jorgue_her");
+
+        UsuarioPublico u3 = new UsuarioPublico(
+            "game_theory", "The Game Theorists", "IamBatman123!",
+            "FEMENINO", "ACTIVO", "PUBLICA", fecha, img3, 22
+        );
+        usuarios.add(u3);
+        crearCarpetasUser("game_theory");
+
+        guardarUsuarios();
+
+    } catch (IOException e) {
+        System.out.println("Error creando cuentas default: " + e.getMessage());
+    }
+}
+
+public void crearPublicacionesDefault() {
+    HashMap<String, String[][]> publicacionesPorUser = new HashMap<>();
+
+    publicacionesPorUser.put("marvel", new String[][] {
+        {"Protegiendo el universo, un planeta a la vez.\n #GuardiansOfTheGalaxy #Marvel #RocketRaccoon #Groot", "Cuadrada","src/Imagenes/img1.jpeg"},
+        {"Siempre listo.\nCaptainAmerica #Avengers #MarvelStudios #OnYourLeft", "Cuadrada","src/Imagenes/img2.jpeg"},
+        {"El rey de Wakanda, siempre en nuestros corazones.#WakandaForever #BlackPanther #Marvel #Legacy","Vertical",  "src/Imagenes/img3.jpeg"}
+    });
+
+    publicacionesPorUser.put("jorgue_her", new String[][] {
+        {"Nuevo proyecto terminado #programacion","Cuadrada",  "src/Imagenes/img4.jpg"},
+        {"El café es vida #developer #codigo", "Cuadrada",  "src/Imagenes/img5.jpg"},
+        {"Capturando momentos 📸 #fotografia","Cuadrad","src/Imagenes/img6.jpg"}
+    });
+
+    publicacionesPorUser.put("game_theory", new String[][] {
+        {"¿Pesaba Mario 100 kilos en SM64? La física revela la verdad. #GameTheory #Mario #Nintendo","Vertical",  "src/Imagenes/img7.jpeg"},
+        {"FNAF: ¿Y si miramos toda la línea de tiempo al revés? #FNAF #GameTheory #Lore", "Horizontal",  "src/Imagenes/img8.jpg"},
+        {"Sobrevivirías un apocalipsis zombie en Minecraft? La ciencia responde. #GameTheory #Minecraft", "Cuadrada",  "src/Imagenes/img9.jpg"}
+    });
+
+    int loggedBackup = usuarioLogged;
+
+    for (Map.Entry<String, String[][]> entry : publicacionesPorUser.entrySet()) {
+        String username = entry.getKey();
+        String[][] publis = entry.getValue();
+
+        for (int i = 0; i < usuarios.size(); i++) {
+            if (usuarios.get(i).getUser().equals(username)) {
+                usuarioLogged = i;
+                break;
+            }
+        }
+
+        for (String[] publiData : publis) {
+            String contenido  = publiData[0];
+            String forma      = publiData[1];
+            String rutaImagen = publiData[2];
+
+            try { Thread.sleep(10); } catch (InterruptedException ignored) {}
+
+            try {
+                String rutaFinal = rutaImagen;
+                File imgFile = new File(rutaImagen);
+                if (imgFile.exists()) {
+                    String nombreImg = "post_" + System.currentTimeMillis();
+                    rutaFinal = guardarImagenUsuario(rutaImagen, nombreImg);
+                }
+
+                Publicacion publi = new Publicacion(username, contenido, rutaFinal, forma);
+                publicaciones.add(publi);
+                addPublicacionFileUser(username, publi);
+                System.out.println("Publicación creada para " + username);
+            } catch (IOException e) {
+                System.out.println("Error: " + e.getMessage());
+            }
+        }
+    }
+
+    usuarioLogged = loggedBackup;
+    System.out.println("publicaciones default creadas.");
+}
 
     private void leerUsuarios(File archivoUsuarios) throws IOException, ClassNotFoundException {
         if (archivoUsuarios.exists() && archivoUsuarios.length() > 0) {
@@ -74,87 +183,89 @@ public class Logica {
         }
     }
 
-    // Copia la imagen al folder del usuario y retorna la nueva ruta
     public String guardarImagenUsuario(String rutaOriginal, String nombreArchivo) {
         if (rutaOriginal == null || rutaOriginal.isEmpty()) {
             return null;
         }
-
         try {
             File origen = new File(rutaOriginal);
             if (!origen.exists()) {
-                return rutaOriginal; // Si no existe, retorna la ruta original
+                return rutaOriginal;
             }
-            // Obtener extensión del archivo
+
             String extension = rutaOriginal.substring(rutaOriginal.lastIndexOf('.'));
-            String nombreFinal = nombreArchivo + extension;
+            extension = extension.toLowerCase(); // .JPG → .jpg
 
-            // Destino: carpeta imagenes del usuario logueado
-            File destino = new File(getPath(getUsuarioUser(0)) + "/imagenes/" + nombreFinal);
+            String nombreLimpio = nombreArchivo.replaceAll("[^a-zA-Z0-9_\\-]", "_");
 
-            // Copiar el archivo
+            File destino = new File(getPath(getUsuarioUser(0))
+                    + "/folders_personales/imagenes/" + nombreLimpio + extension);
+
+            destino.getParentFile().mkdirs();
+
             java.nio.file.Files.copy(
                     origen.toPath(),
                     destino.toPath(),
                     java.nio.file.StandardCopyOption.REPLACE_EXISTING
             );
-
-            return destino.getPath(); // Retorna la nueva ruta local
-
+            return destino.getPath();
         } catch (IOException e) {
             System.out.println("Error copiando imagen: " + e.getMessage());
-            return rutaOriginal; // Si falla, usa la original
+            return rutaOriginal; 
         }
     }
 
-    // Leer el mapa completo del archivo
     private HashMap<String, ArrayList<Mensaje>> leerMapaChats(String pathArchivo) {
-        File archivo = new File(pathArchivo);
-        if (archivo.exists() && archivo.length() > 0) {
-            try (ObjectInputStream in = new ObjectInputStream(new FileInputStream(archivo))) {
-                return (HashMap<String, ArrayList<Mensaje>>) in.readObject();
-            } catch (IOException | ClassNotFoundException e) {
-                System.out.println("Error leyendo chats: " + e.getMessage());
+        synchronized (lockChats) { 
+            File archivo = new File(pathArchivo);
+            if (archivo.exists() && archivo.length() > 0) {
+                try (ObjectInputStream in = new ObjectInputStream(new FileInputStream(archivo))) {
+                    return (HashMap<String, ArrayList<Mensaje>>) in.readObject();
+                } catch (IOException | ClassNotFoundException e) {
+                    System.out.println("Error leyendo chats: " + e.getMessage());
+                }
+            }
+            return new HashMap<>();
+        }
+    }
+
+    private void guardarMapaChats(String pathArchivo, HashMap<String, ArrayList<Mensaje>> mapa) {
+        synchronized (lockChats) { // ✅
+            try (ObjectOutputStream out = new ObjectOutputStream(new FileOutputStream(pathArchivo))) {
+                out.writeObject(mapa);
+            } catch (IOException e) {
+                System.out.println("Error guardando chats: " + e.getMessage());
             }
         }
-        return new HashMap<>(); // Si no existe, retorna mapa vacío
     }
 
-// Guardar el mapa completo en el archivo
-    private void guardarMapaChats(String pathArchivo, HashMap<String, ArrayList<Mensaje>> mapa) {
-        try (ObjectOutputStream out = new ObjectOutputStream(new FileOutputStream(pathArchivo))) {
-            out.writeObject(mapa);
-        } catch (IOException e) {
-            System.out.println("Error guardando chats: " + e.getMessage());
-        }
-    }
-
-// Cargar mensajes del chat con un usuario específico
     private void leerChats(Usuario user) {
         String path = getPath(getUsuarioUser(0)) + "/inbox.ins";
         HashMap<String, ArrayList<Mensaje>> mapa = leerMapaChats(path);
-        // Si existe conversación con ese user la carga, si no, lista vacía
         this.mensajes = mapa.getOrDefault(user.getUser(), new ArrayList<>());
     }
 
-// Guardar mensajes actuales sin perder los demás chats
     private void guardarChats(Usuario user) {
-        String pathLogged = getPath(getUsuarioUser(0)) + "/inbox.ins";
-        String pathOther = getPath(user.getUser()) + "/inbox.ins";
+        synchronized (lockChats) { 
+            String pathLogged = getPath(getUsuarioUser(0)) + "/inbox.ins";
+            String pathOther = getPath(user.getUser()) + "/inbox.ins";
 
-        // --- Guardar en inbox del usuario logueado ---
-        HashMap<String, ArrayList<Mensaje>> mapaLogged = leerMapaChats(pathLogged);
-        mapaLogged.put(user.getUser(), this.mensajes);   // reemplaza solo ese chat
-        guardarMapaChats(pathLogged, mapaLogged);
+            HashMap<String, ArrayList<Mensaje>> mapaLogged = leerMapaChats(pathLogged);
+            mapaLogged.put(user.getUser(), this.mensajes);
+            guardarMapaChats(pathLogged, mapaLogged);
 
-        // --- Guardar en inbox del otro usuario ---
-        HashMap<String, ArrayList<Mensaje>> mapaOther = leerMapaChats(pathOther);
-        mapaOther.put(getUsuarioUser(0), this.mensajes); // clave = usuario logueado
-        guardarMapaChats(pathOther, mapaOther);
+            HashMap<String, ArrayList<Mensaje>> mapaOther = leerMapaChats(pathOther);
+            mapaOther.put(getUsuarioUser(0), this.mensajes);
+            guardarMapaChats(pathOther, mapaOther);
+        }
     }
 
     public void setChatListener(ChatListener listener) {
         this.chatListener = listener;
+    }
+
+    public void setChatActivo(String username) {
+        this.chatActivoActual = username;
     }
 
     public ArrayList<Mensaje> getMensajes() {
@@ -177,7 +288,62 @@ public class Logica {
         new Thread(this::escucharMensajes).start();
     }
 
-// ── Enviar mensaje ────────────────────────────────────────────
+    public ArrayList<String> getUsuariosConChat() {
+        String path = getPath(getUsuarioUser(0)) + "/inbox.ins";
+        HashMap<String, ArrayList<Mensaje>> mapa = leerMapaChats(path);
+        return new ArrayList<>(mapa.keySet());
+    }
+
+    public ArrayList<String> getContactosDisponibles() {
+        ArrayList<String> contactos = new ArrayList<>();
+        String miUser = getUsuarioUser(0);
+
+        File archivoFollowing = new File(getPath(miUser) + "/following.ins");
+        if (archivoFollowing.exists()) {
+            try (RandomAccessFile following = getFileFollowing(miUser)) {
+                following.seek(0);
+                while (following.getFilePointer() < following.length()) {
+                    String nombre = following.readUTF();
+                    int estado = following.readInt();
+                    if (estado == 1 && !contactos.contains(nombre)) {
+                        contactos.add(nombre);
+                    }
+                }
+            } catch (IOException e) {
+                System.out.println(e.getMessage());
+            }
+        }
+
+        File archivoFollowers = new File(getPath(miUser) + "/followers.ins");
+        if (archivoFollowers.exists()) {
+            try (RandomAccessFile followers = getFileFollowers(miUser)) {
+                followers.seek(0);
+                while (followers.getFilePointer() < followers.length()) {
+                    String nombre = followers.readUTF();
+                    int estado = followers.readInt();
+                    if (estado == 1 && !contactos.contains(nombre)) {
+                        Usuario u = getAutorPublicacion(nombre);
+                        if (u == null) {
+                            for (Usuario usr : usuarios) {
+                                if (usr.getUser().equals(nombre)) {
+                                    u = usr;
+                                    break;
+                                }
+                            }
+                        }
+                        if (u != null && isPublica(u)) {
+                            contactos.add(nombre);
+                        }
+                    }
+                }
+            } catch (IOException e) {
+                System.out.println(e.getMessage());
+            }
+        }
+
+        return contactos;
+    }
+
     public void enviarMensaje(int indicador, String contenido) throws IOException {
         Mensaje mensaje;
         if (indicador == 0) {
@@ -192,24 +358,83 @@ public class Logica {
         socketOut.flush();
     }
 
-    private void escucharMensajes() {
-        try {
-            while (true) {
-                Mensaje mensaje = (Mensaje) socketIn.readObject();
-                mensajes.add(mensaje);
-                guardarChats(mensaje.getEmisor());
-
+private void escucharMensajes() {
+    try {
+        while (true) {
+            Mensaje mensaje = (Mensaje) socketIn.readObject();
+            
+            if (mensaje instanceof MensajeTexto 
+                    && "@@LEIDO@@".equals(mensaje.getContenido())) {
+                if (mensajes != null) {
+                    for (Mensaje m : mensajes) {
+                        if (m.esMio(getUsuarioUser(0)) && !m.isLeido()) {
+                            m.marcarLeido();
+                        }
+                    }
+                }
                 if (chatListener != null) {
                     SwingUtilities.invokeLater(() -> chatListener.onMensajeRecibido(mensaje));
                 }
+                continue;
             }
-        } catch (SocketException | EOFException e) {
+            
+            if (mensajes == null) mensajes = new ArrayList<>();
+            mensajes.add(mensaje);
+            
             if (chatListener != null) {
-                SwingUtilities.invokeLater(() -> chatListener.onDesconectado());
+                SwingUtilities.invokeLater(() -> chatListener.onMensajeRecibido(mensaje));
             }
-        } catch (IOException | ClassNotFoundException e) {
-            e.printStackTrace();
+            
+            new Thread(() -> {
+                guardarChats(mensaje.getEmisor());
+                if (!mensaje.getEmisor().getUser().equals(chatActivoActual)) {
+                    agregarNotificacion(getUsuarioUser(0), new Notificacion(
+                        Notificacion.Tipo.MENSAJE,
+                        mensaje.getEmisor().getUser(),
+                        mensaje.getEmisor().getUser() + " te envió un mensaje."
+                    ));
+                }
+            }).start();
         }
+    } catch (SocketException | EOFException e) {
+        if (chatListener != null)
+            SwingUtilities.invokeLater(() -> chatListener.onDesconectado());
+    } catch (IOException | ClassNotFoundException e) {
+        e.printStackTrace();
+    }
+}
+public void notificarMensajesLeidos(String paraQuien) throws IOException {
+    if (socketOut == null) return;
+    MensajeTexto ack = new MensajeTexto(getUsuario(0), getUsuario(1), "@@LEIDO@@");
+    socketOut.writeObject(ack);
+    socketOut.flush();
+}
+
+    public void marcarMensajesLeidosEnMemoria(String deQuien) {
+        if (mensajes == null) {
+            return;
+        }
+        for (Mensaje m : mensajes) {
+            if (m.getEmisor().getUser().equals(deQuien) && !m.isLeido()) {
+                m.marcarLeido();
+            }
+        }
+    }
+
+    public void marcarMensajesLeidos(String deQuien) {
+        marcarMensajesLeidosEnMemoria(deQuien);
+        if (usuarioSelec >= 0 && usuarioSelec < usuarios.size()) {
+            guardarChats(getUsuario(1));
+        }
+    }
+
+    public void eliminarConversacion(String userDestino) {
+        String pathLogged = getPath(getUsuarioUser(0)) + "/inbox.ins";
+        HashMap<String, ArrayList<Mensaje>> mapaLogged = leerMapaChats(pathLogged);
+        mapaLogged.remove(userDestino);
+        guardarMapaChats(pathLogged, mapaLogged);
+
+        this.mensajes = new ArrayList<>();
     }
 
     private void cargarPublicacionesUsuarios() {
@@ -235,6 +460,10 @@ public class Logica {
         }
     }
 
+    public void recargarPublicaciones() {
+        cargarPublicacionesUsuarios();
+    }
+
     private String getPath(String user) {
         return "src/INSTA_RAIZ/" + user.toUpperCase();
     }
@@ -243,11 +472,11 @@ public class Logica {
         File carpetaUser = new File(getPath(user));
         carpetaUser.mkdir();
 
-        File carpetaImg = new File(getPath(user) + "/imagenes");
-        carpetaImg.mkdir();
-
         File carpetaFolders = new File(getPath(user) + "/folders_personales");
         carpetaFolders.mkdir();
+
+        File carpetaImg = new File(getPath(user) + "/folders_personales/imagenes");
+        carpetaImg.mkdir();
 
         File carpetaStickers = new File(getPath(user) + "/stickers_personales");
         carpetaStickers.mkdir();
@@ -255,31 +484,92 @@ public class Logica {
         new File(getPath(user) + "/followers.ins").createNewFile();
         new File(getPath(user) + "/following.ins").createNewFile();
         new File(getPath(user) + "/inbox.ins").createNewFile();
-        new File(getPath(user) + "/likes.ins").createNewFile();
+        new File(getPath(user) + "/folders_personales/notificaciones.ins").createNewFile();
     }
 
     private RandomAccessFile getFileFollowers(String user) throws IOException {
-        return new RandomAccessFile(getPath(user) + "/followers.ins", "rw");
+        File archivo = new File(getPath(user) + "/followers.ins");
+        archivo.getParentFile().mkdirs();
+        if (!archivo.exists()) {
+            archivo.createNewFile();
+        }
+        return new RandomAccessFile(archivo, "rw");
     }
 
     private RandomAccessFile getFileFollowing(String user) throws IOException {
-        return new RandomAccessFile(getPath(user) + "/following.ins", "rw");
+        File archivo = new File(getPath(user) + "/following.ins");
+        archivo.getParentFile().mkdirs();
+        if (!archivo.exists()) {
+            archivo.createNewFile();
+        }
+        return new RandomAccessFile(archivo, "rw");
     }
 
-    private RandomAccessFile getFileInsta(String user) throws IOException {
-        return new RandomAccessFile(getPath(user) + "/insta.ins", "rw");
+    private String getPathStickersGlobales() {
+        return "src/INSTA_RAIZ/stickers_globales/";
     }
 
-    private RandomAccessFile getFileInbox(String user) throws IOException {
-        return new RandomAccessFile(getPath(user) + "/inbox.ins", "rw");
+    private String getPathStickersPersonales(String user) {
+        return getPath(user) + "/stickers_personales/";
     }
 
-    private RandomAccessFile getFileStickers(String user) throws IOException {
-        return new RandomAccessFile(getPath(user) + "/stickers.ins", "rw");
+    public ArrayList<String> getStickersGlobales() {
+        String[] nombres = {
+            "stickerFeliz.png", "stickerTriste.png", "stickerCorazon.png",
+            "stickerRisa.png", "stickerAplauso.png"
+        };
+        ArrayList<String> rutas = new ArrayList<>();
+        for (String nombre : nombres) {
+            File f = new File(getPathStickersGlobales() + nombre);
+            if (f.exists()) {
+                rutas.add(f.getPath());
+            }
+        }
+        return rutas;
     }
 
-    private RandomAccessFile getFileLikes(String user) throws IOException {
-        return new RandomAccessFile(getPath(user) + "/likes.ins", "rw");
+    public ArrayList<String> getStickersPersonales() {
+        ArrayList<String> rutas = new ArrayList<>();
+        File archivo = new File(getPath(getUsuarioUser(0)) + "/stickers.ins");
+        if (!archivo.exists() || archivo.length() == 0) {
+            return rutas;
+        }
+
+        try (ObjectInputStream in = new ObjectInputStream(new FileInputStream(archivo))) {
+            rutas = (ArrayList<String>) in.readObject();
+        } catch (IOException | ClassNotFoundException e) {
+            System.out.println("Error leyendo stickers: " + e.getMessage());
+        }
+        return rutas;
+    }
+
+    public String guardarStickerPersonal(String rutaOriginal) {
+        try {
+            File origen = new File(rutaOriginal);
+            if (!origen.exists()) {
+                return null;
+            }
+
+            String extension = rutaOriginal.substring(rutaOriginal.lastIndexOf('.'));
+            String nombre = "sticker_" + System.currentTimeMillis() + extension;
+            File destino = new File(getPathStickersPersonales(getUsuarioUser(0)) + nombre);
+
+            java.nio.file.Files.copy(origen.toPath(), destino.toPath(),
+                    java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+
+            ArrayList<String> lista = getStickersPersonales();
+            lista.add(destino.getPath());
+
+            try (ObjectOutputStream out = new ObjectOutputStream(
+                    new FileOutputStream(getPath(getUsuarioUser(0)) + "/stickers.ins"))) {
+                out.writeObject(lista);
+            }
+
+            return destino.getPath();
+        } catch (IOException e) {
+            System.out.println("Error guardando sticker: " + e.getMessage());
+            return null;
+        }
     }
 
     public boolean estaActivoEnOtraVentana(String username) {
@@ -292,7 +582,7 @@ public class Logica {
             String linea;
             while ((linea = reader.readLine()) != null) {
                 if (linea.trim().equalsIgnoreCase(username)) {
-                    return true; // ya está activo
+                    return true;
                 }
             }
         } catch (IOException e) {
@@ -301,16 +591,13 @@ public class Logica {
         return false;
     }
 
-// Escribir el username en el archivo de sesiones
     private void registrarSesion(String username) {
         try {
             File archivo = new File(pathSesiones);
-            // Leer sesiones existentes
             ArrayList<String> sesiones = leerSesiones();
             if (!sesiones.contains(username.toLowerCase())) {
                 sesiones.add(username.toLowerCase());
             }
-            // Reescribir el archivo
             try (BufferedWriter writer = new BufferedWriter(new FileWriter(archivo, false))) {
                 for (String s : sesiones) {
                     writer.write(s);
@@ -322,7 +609,6 @@ public class Logica {
         }
     }
 
-// Eliminar el username del archivo al cerrar sesión
     public void cerrarSesion() {
         try {
             String username = getUsuarioUser(0).toLowerCase();
@@ -337,12 +623,29 @@ public class Logica {
                 }
             }
 
-            // Marcar usuario como inactivo
+        } catch (IOException e) {
+            System.out.println("Error cerrando sesión: " + e.getMessage());
+        }
+    }
+
+    public void desactivarYCerrarSesion() {
+        try {
             usuarios.get(usuarioLogged).setEstado("INACTIVO");
             guardarUsuarios();
 
+            String username = getUsuarioUser(0).toLowerCase();
+            ArrayList<String> sesiones = leerSesiones();
+            sesiones.remove(username);
+
+            File archivo = new File(pathSesiones);
+            try (BufferedWriter writer = new BufferedWriter(new FileWriter(archivo, false))) {
+                for (String s : sesiones) {
+                    writer.write(s);
+                    writer.newLine();
+                }
+            }
         } catch (IOException e) {
-            System.out.println("Error cerrando sesión: " + e.getMessage());
+            System.out.println("Error: " + e.getMessage());
         }
     }
 
@@ -366,33 +669,36 @@ public class Logica {
         return sesiones;
     }
 
-    private boolean Login(String nombre_login, String contraseña_login, int indexUsuario) {
-        if (indexUsuario < usuarios.size()) {
-            if (usuarios.get(indexUsuario) != null) {
-                if (usuarios.get(indexUsuario).getUser().equals(nombre_login) && usuarios.get(indexUsuario).getContra().equals(contraseña_login)) {
-                    this.usuarioLogged = indexUsuario;
-                    usuarios.get(usuarioLogged).setEstado("ACTIVO");
-                    return true;
-                } else {
-                    return Login(nombre_login, contraseña_login, indexUsuario + 1);
+    public int LoginConEstado(String nombre_login, String contraseña_login) {
+        for (Usuario user : usuarios) {
+            if (user != null && user.getUser().equals(nombre_login)
+                    && user.getContra().equals(contraseña_login)) {
+                if (estaActivoEnOtraVentana(nombre_login)) {
+                    return 0;
                 }
+
+                usuarioLogged = usuarios.indexOf(user);
+
+                if (user.getEstado() == Usuario.EstadoCuenta.INACTIVO) {
+                    return 2;
+                }
+
+                user.setEstado("ACTIVO");
+                registrarSesion(nombre_login);
+                return 1;
             }
-        } else {
-            return false;
         }
-        return false;
+        return 0;
+    }
+
+    public void reactivarCuenta() {
+        usuarios.get(usuarioLogged).setEstado("ACTIVO");
+        registrarSesion(getUsuarioUser(0));
+        guardarUsuarios();
     }
 
     public boolean Login(String nombre_login, String contraseña_login) {
-        boolean resultado = Login(nombre_login, contraseña_login, 0);
-        if (resultado) {
-            if (estaActivoEnOtraVentana(nombre_login)) {
-                usuarioLogged = 0;
-                return false; // ← tratarlo como login fallido
-            }
-            registrarSesion(nombre_login);
-        }
-        return resultado;
+        return LoginConEstado(nombre_login, contraseña_login) == 1;
     }
 
     private ArrayList<Integer> verificarDatos(String nombre, String user, String contra, String edad) {
@@ -412,7 +718,7 @@ public class Logica {
                     errores.add(5);
                 }
             } catch (NumberFormatException e) {
-                errores.add(5); // Edad no es un número
+                errores.add(5);
             }
         }
         if (contra.isBlank()) {
@@ -443,14 +749,15 @@ public class Logica {
     public ArrayList<Integer> setDatos(String nombre, String user, String contra, String genero, String edad, ImageIcon fotoPerfil, String tipoCuenta) {
         ArrayList<Integer> errores = verificarDatos(nombre, user, contra, edad);
 
+        String generoFinal = genero.equals("M") ? "MASCULINO" : "FEMENINO";
         if (errores.isEmpty()) {
             try {
                 Date fecha = Calendar.getInstance().getTime();
                 Usuario nuevoUser = null;
                 if (tipoCuenta.equals("PUBLICA")) {
-                    nuevoUser = new UsuarioPublico(user, nombre, contra, genero, "ACTIVO", tipoCuenta, fecha, fotoPerfil, Integer.parseInt(edad));
+                    nuevoUser = new UsuarioPublico(user, nombre, contra, generoFinal, "ACTIVO", tipoCuenta, fecha, fotoPerfil, Integer.parseInt(edad));
                 } else {
-                    nuevoUser = new UsuarioPrivado(user, nombre, contra, genero, "ACTIVO", tipoCuenta, fecha, fotoPerfil, Integer.parseInt(edad));
+                    nuevoUser = new UsuarioPrivado(user, nombre, contra, generoFinal, "ACTIVO", tipoCuenta, fecha, fotoPerfil, Integer.parseInt(edad));
                 }
                 usuarios.add(nuevoUser);
                 crearCarpetasUser(user);
@@ -458,11 +765,11 @@ public class Logica {
                 if (fotoPerfil != null) {
                     String rutaOriginal = fotoPerfil.getDescription();
                     if (rutaOriginal != null && !rutaOriginal.isEmpty()) {
-                        // Copiar manualmente sin depender de usuarioLogged
                         File origen = new File(rutaOriginal);
                         if (origen.exists()) {
-                            String extension = rutaOriginal.substring(rutaOriginal.lastIndexOf('.'));
-                            File destino = new File(getPath(user) + "/imagenes/perfil" + extension);
+                            String extension = rutaOriginal.substring(rutaOriginal.lastIndexOf('.')).toLowerCase();
+                            File destino = new File(getPath(user) + "/folders_personales/imagenes/perfil" + extension);
+                            destino.getParentFile().mkdirs();
                             java.nio.file.Files.copy(origen.toPath(), destino.toPath(),
                                     java.nio.file.StandardCopyOption.REPLACE_EXISTING);
                             nuevoUser.setFotoPerfil(new ImageIcon(destino.getPath(), destino.getPath()));
@@ -475,7 +782,6 @@ public class Logica {
             } catch (IOException e) {
                 System.out.println(e.getMessage());
             }
-            // Código de éxito
         }
         return errores;
     }
@@ -483,6 +789,7 @@ public class Logica {
     public ArrayList<Integer> modificarDatos(String nombre, String user, String contra, String genero, String edad, ImageIcon fotoPerfil, String tipoCuenta, String bio) {
         ArrayList<Integer> modificaciones = verificarNuevosDatos(nombre, user, contra, edad, bio, genero, tipoCuenta);
 
+        String generoFinal = genero.equals("M") ? "MASCULINO" : "FEMENINO";
         if (modificaciones.contains(1)) {
             usuarios.get(usuarioLogged).setNombre(nombre);
         }
@@ -508,7 +815,7 @@ public class Logica {
         }
 
         if (modificaciones.contains(6)) {
-            usuarios.get(usuarioLogged).setGenero(genero);
+            usuarios.get(usuarioLogged).setGenero(generoFinal);
         }
 
         if (fotoPerfil != null) {
@@ -571,7 +878,7 @@ public class Logica {
                     modificacion.add(4);
                 }
             } catch (NumberFormatException e) {
-                modificacion.add(9); // Edad no es un número
+                modificacion.add(9); 
             }
         }
 
@@ -692,26 +999,24 @@ public class Logica {
 
     public ArrayList buscar(int indicador, String buscado) throws IOException {
         ArrayList matches = new ArrayList<>();
-        String miUser = getUsuarioUser(0); // Guardamos tu usuario para comparar rápido
+        String miUser = getUsuarioUser(0);
 
         switch (indicador) {
-            case 1: // Búsqueda de Usuarios
+            case 1:
                 for (Usuario user : usuarios) {
                     String username = user.getUser().toLowerCase();
                     String nombreReal = user.getNombre().toLowerCase();
                     String query = buscado.toLowerCase();
 
-                    // Regla: (Coincide usuario O Coincide nombre) Y NO soy yo
                     if ((username.contains(query) || nombreReal.contains(query)) && !user.getUser().equals(miUser) && user.getEstado().name().equals("ACTIVO")) {
                         matches.add(user);
                     }
                 }
                 break;
 
-            case 2: // Búsqueda por Hashtag
+            case 2: 
                 buscado = buscado.replace("#", "");
                 for (Publicacion publi : publicaciones) {
-                    // Regla: NO es mi publicación Y tiene el hashtag Y (Es pública O la sigo)
                     if (!publi.getAutor().equals(miUser)) {
                         if (publi.getHashtags().contains(buscado)) {
                             Usuario autor = getAutorPublicacion(publi.getAutor());
@@ -725,10 +1030,9 @@ public class Logica {
                 }
                 break;
 
-            case 3: // Búsqueda por Mención
+            case 3: 
                 buscado = buscado.replace("@", "");
                 for (Publicacion publi : publicaciones) {
-                    // Regla: NO es mi publicación Y me mencionaron Y (Es pública O la sigo)
                     if (!publi.getAutor().equals(miUser)) {
                         if (publi.getMenciones().contains(buscado)) {
                             Usuario autor = getAutorPublicacion(publi.getAutor());
@@ -758,12 +1062,11 @@ public class Logica {
         try {
             String rutaFinal = rutaImagen;
             if (rutaImagen != null && !rutaImagen.isEmpty()) {
-                // Nombre único basado en timestamp para evitar sobreescribir
                 String nombreImg = "post_" + System.currentTimeMillis();
                 rutaFinal = guardarImagenUsuario(rutaImagen, nombreImg);
             }
 
-            Publicacion publi = new Publicacion(getUsuarioUser(0), contenido, rutaImagen, contenido);
+            Publicacion publi = new Publicacion(getUsuarioUser(0), contenido, rutaFinal, forma);
 
             publicaciones.add(publi);
             addPublicacionFileUser(getUsuarioUser(0), publi);
@@ -819,65 +1122,120 @@ public class Logica {
         }
     }
 
-    public int isFollowing(Usuario user) throws IOException {
-        try (RandomAccessFile following = getFileFollowing(getUsuarioUser(0))) {
-            following.seek(0);
-            while (following.getFilePointer() < following.length()) {
+public int isFollowing(String user) throws IOException {
+    File archivo = new File(getPath(getUsuarioUser(0)) + "/following.ins");
+    if (!archivo.exists() || archivo.length() == 0) return 4;
+
+    try (RandomAccessFile following = getFileFollowing(getUsuarioUser(0))) {
+        following.seek(0);
+        while (following.getFilePointer() < following.length()) {
+            try {
                 String nombre = following.readUTF();
-                long posicion = following.getFilePointer();
                 int estado = following.readInt();
-                if (nombre.equals(user.getUser())) {
-                    following.seek(posicion);
-                    return estado;
-                }
-            }
-            return 4;
+                if (nombre != null && nombre.equals(user)) return estado;
+            } catch (EOFException e) { break; }
         }
+        return 4;
     }
+}
 
-    public int isUsuarioLoggedFollower(Usuario user) throws IOException {
-        File archivo = new File(getPath(user.getUser()) + "/followers.ins");
-        if (!archivo.exists()) {
-            return 4;
-        }
+public int isUsuarioLoggedFollower(Usuario user) throws IOException {
+    if (user == null) return 4;
+    File archivo = new File(getPath(user.getUser()) + "/followers.ins");
+    if (!archivo.exists() || archivo.length() == 0) return 4;
 
-        try (RandomAccessFile followers = getFileFollowers(user.getUser())) {
-            followers.seek(0);
-            while (followers.getFilePointer() < followers.length()) {
+    try (RandomAccessFile followers = getFileFollowers(user.getUser())) {
+        followers.seek(0);
+        while (followers.getFilePointer() < followers.length()) {
+            try {
                 String nombre = followers.readUTF();
-                long posicion = followers.getFilePointer();
                 int estado = followers.readInt();
-                if (nombre.equals(getUsuarioUser(0))) {
-                    followers.seek(posicion);
-                    return estado;
-                }
-            }
-            return 4;
+                if (nombre != null && nombre.equals(getUsuarioUser(0))) return estado;
+            } catch (EOFException e) { break; }
         }
+        return 4;
     }
+}
 
     public void addFollowing(Usuario user) throws IOException {
-        int indicador = isFollowing(user);
+        int indicador = isFollowing(user.getUser());
+
         if (indicador == 1 || indicador == 2) {
             removeFollowing(user);
             removeFollower();
             return;
-        } else {
-            RandomAccessFile following = getFileFollowing(getUsuarioUser(0));
-            if (indicador == 4) {
-                following.seek(following.length());
-                following.writeUTF(user.getUser());
+        }
+
+        if (indicador == 3) {
+            try (RandomAccessFile following = getFileFollowing(getUsuarioUser(0))) {
+                following.seek(0);
+                while (following.getFilePointer() < following.length()) {
+                    following.readUTF();
+                    long posEstado = following.getFilePointer();
+                    int estado = following.readInt();
+                    if (estado == 3) {
+                        following.seek(posEstado);
+                        following.writeInt(isPublica(user) ? 1 : 2);
+                        break;
+                    }
+                }
             }
-            following.writeInt(isPublica(user) ? 1 : 2);
 
             int indicador2 = isUsuarioLoggedFollower(user);
-            RandomAccessFile followers = getFileFollowers(user.getUser());
-            if (indicador2 == 4) {
-                followers.seek(followers.length());
-                followers.writeUTF(getUsuarioUser(0));
+            try (RandomAccessFile followers = getFileFollowers(user.getUser())) {
+                if (indicador2 == 3) {
+                    followers.seek(0);
+                    while (followers.getFilePointer() < followers.length()) {
+                        followers.readUTF();
+                        long posEstado = followers.getFilePointer();
+                        int estado = followers.readInt();
+                        if (estado == 3) {
+                            followers.seek(posEstado);
+                            followers.writeInt(isPublica(user) ? 1 : 2);
+                            break;
+                        }
+                    }
+                } else if (indicador2 == 4) {
+                    followers.seek(followers.length());
+                    followers.writeUTF(getUsuarioUser(0));
+                    followers.writeInt(isPublica(user) ? 1 : 2);
+                }
             }
-            followers.writeInt(isPublica(user) ? 1 : 2);
+        } else {
+            try (RandomAccessFile following = getFileFollowing(getUsuarioUser(0))) {
+                following.seek(following.length());
+                following.writeUTF(user.getUser());
+                following.writeInt(isPublica(user) ? 1 : 2);
+            }
+
+            int indicador2 = isUsuarioLoggedFollower(user);
+            try (RandomAccessFile followers = getFileFollowers(user.getUser())) {
+                if (indicador2 == 4) {
+                    followers.seek(followers.length());
+                    followers.writeUTF(getUsuarioUser(0));
+                } else {
+                    followers.seek(0);
+                    while (followers.getFilePointer() < followers.length()) {
+                        followers.readUTF();
+                        long posEstado = followers.getFilePointer();
+                        followers.readInt();
+                        followers.seek(posEstado);
+                        followers.writeInt(isPublica(user) ? 1 : 2);
+                        break;
+                    }
+                    return;
+                }
+                followers.writeInt(isPublica(user) ? 1 : 2);
+            }
         }
+
+        agregarNotificacion(user.getUser(), new Notificacion(
+                isPublica(user) ? Notificacion.Tipo.SEGUIDOR : Notificacion.Tipo.SOLICITUD,
+                getUsuarioUser(0),
+                isPublica(user)
+                ? getUsuarioUser(0) + " empezó a seguirte."
+                : getUsuarioUser(0) + " quiere seguirte."
+        ));
     }
 
     public void addFollower(Usuario user) throws IOException {
@@ -888,24 +1246,46 @@ public class Logica {
         }
     }
 
-    public void removeFollowing(Usuario user) throws IOException {
-        int indicador = isFollowing(user);
-        if (indicador == 1 || indicador == 2) {
-            RandomAccessFile following = getFileFollowing(getUsuarioUser(0));
-            following.writeInt(3);
+public void removeFollowing(Usuario user) throws IOException {
+    if (user == null) return;
+    try (RandomAccessFile following = getFileFollowing(getUsuarioUser(0))) {
+        following.seek(0);
+        while (following.getFilePointer() < following.length()) {
+            try {
+                String nombre = following.readUTF();
+                long posEstado = following.getFilePointer();
+                int estado = following.readInt();
+                if (nombre.equals(user.getUser()) && (estado == 1 || estado == 2)) {
+                    following.seek(posEstado);
+                    following.writeInt(3);
+                    break;
+                }
+            } catch (EOFException e) { break; }
         }
     }
+}
 
-    public void removeFollower() throws IOException {
-        int indicador = isUsuarioLoggedFollower(getUsuario(1));
-        if (indicador == 1 || indicador == 2) {
-            RandomAccessFile followers = getFileFollowers(getUsuarioUser(1));
-            followers.writeInt(3);
+public void removeFollower() throws IOException {
+    Usuario selec = getUsuario(1);
+    if (selec == null) return;
+    try (RandomAccessFile followers = getFileFollowers(getUsuarioUser(1))) {
+        followers.seek(0);
+        while (followers.getFilePointer() < followers.length()) {
+            try {
+                String nombre = followers.readUTF();
+                long posEstado = followers.getFilePointer();
+                int estado = followers.readInt();
+                if (nombre.equals(getUsuarioUser(0)) && (estado == 1 || estado == 2)) {
+                    followers.seek(posEstado);
+                    followers.writeInt(3);
+                    break;
+                }
+            } catch (EOFException e) { break; }
         }
     }
+}
 
     public String getListaNombresFollowers(int indicador) {
-        // Obtenemos el usuario objetivo según el índice (en tu caso, el 1 para otros perfiles)
         Usuario user = getUsuario(indicador);
         File archivo = new File(getPath(user.getUser()) + "/followers.ins");
         if (!archivo.exists() || archivo.length() == 0) {
@@ -918,7 +1298,7 @@ public class Logica {
             while (followers.getFilePointer() < followers.length()) {
                 String nombre = followers.readUTF();
                 int estado = followers.readInt();
-                if (estado == 1) // solo activos
+                if (estado == 1) 
                 {
                     seguidores.add(nombre);
                 }
@@ -930,7 +1310,6 @@ public class Logica {
         return seguidores.isEmpty() ? "Nadie" : String.join(", ", seguidores);
     }
 
-// Método para obtener la lista de nombres de seguidos como un String formateado
     public String getListaNombresFollowing(int indicador) {
         Usuario user = getUsuario(indicador);
 
@@ -945,7 +1324,7 @@ public class Logica {
             while (following.getFilePointer() < following.length()) {
                 String nombre = following.readUTF();
                 int estado = following.readInt();
-                if (estado == 1) // solo activos
+                if (estado == 1) 
                 {
                     seguidos.add(nombre);
                 }
@@ -959,31 +1338,41 @@ public class Logica {
 
     public ArrayList<Publicacion> getFeed() throws IOException {
         ArrayList<Publicacion> publiFeed = new ArrayList<>();
-        // Recorremos de atrás hacia adelante para ver lo más reciente primero
+
         for (int i = publicaciones.size() - 1; i >= 0; i--) {
             Publicacion publi = publicaciones.get(i);
-            if (!publi.getAutor().equals(getUsuarioUser(0))) {
-                Usuario autor = getAutorPublicacion(publi.getAutor());
-                if (isPublica(autor) || isUsuarioLoggedFollower(autor) == 1) {
-                    publiFeed.add(publi);
-                }
+            Usuario autor = getAutorPublicacion(publi.getAutor());
+
+            if (autor == null || autor.getEstado() == Usuario.EstadoCuenta.INACTIVO) {
+                continue;
+            }
+
+            if (publi.getAutor().equals(getUsuarioUser(0))) {
+                publiFeed.add(publi);
+                continue;
+            }
+
+            if (isPublica(autor) || isUsuarioLoggedFollower(autor) == 1) {
+                publiFeed.add(publi);
             }
         }
+
+        publiFeed.sort((a, b) -> b.getFechaHora().compareTo(a.getFechaHora()));
+
         return publiFeed;
     }
 
     public void actualizarPublicacion(Publicacion pActualizada) {
-        // 1. Actualizar en la lista de memoria
         for (int i = 0; i < publicaciones.size(); i++) {
-            if (publicaciones.get(i).getFechaFormateada().equals(pActualizada.getFechaFormateada())
-                    && publicaciones.get(i).getAutor().equals(pActualizada.getAutor())) {
+            Publicacion p = publicaciones.get(i);
+            if (p.getAutor().equals(pActualizada.getAutor())
+                    && p.getFechaHora().equals(pActualizada.getFechaHora())) {
                 publicaciones.set(i, pActualizada);
-                break;
+                reescribirArchivoUsuario(pActualizada.getAutor());
+                return; 
             }
         }
 
-        // 2. Reescribir el archivo .ins del autor con la lista completa de sus posts actualizada
-        reescribirArchivoUsuario(pActualizada.getAutor());
     }
 
     private void reescribirArchivoUsuario(String username) {
@@ -998,5 +1387,215 @@ public class Logica {
             System.out.println("Error al actualizar archivo: " + e.getMessage());
         }
     }
+
+    private ArrayList<Publicacion> getPubliPerfilDesordenadas(Usuario user) {
+        ArrayList<Publicacion> publiUsuario = new ArrayList<>();
+        for (Publicacion publis : publicaciones) {
+            if (publis.getAutor().equals(user.getUser())) {
+                publiUsuario.add(publis);
+            }
+        }
+        return publiUsuario;
+    }
+
+    public ArrayList<Publicacion> getPubliPerfil(Usuario user) {
+        ArrayList<Publicacion> lista = getPubliPerfilDesordenadas(user);
+        if (lista.isEmpty()) {
+            return lista;
+        }
+
+        for (int i = 0; i < lista.size() - 1; i++) {
+            for (int j = 0; j < lista.size() - 1 - i; j++) {
+                if (lista.get(j).getFechaHora().before(lista.get(j + 1).getFechaHora())) {
+                    Publicacion tmp = lista.get(j);
+                    lista.set(j, lista.get(j + 1));
+                    lista.set(j + 1, tmp);
+                }
+            }
+        }
+        return lista;
+    }
+
+    private String getPathNotificaciones(String user) {
+        return getPath(user) + "/folders_personales/notificaciones.ins";
+    }
+
+    private void guardarNotificaciones(String user, ArrayList<Notificacion> lista) {
+        try (ObjectOutputStream out = new ObjectOutputStream(
+                new FileOutputStream(getPathNotificaciones(user)))) {
+            out.writeObject(lista);
+        } catch (IOException e) {
+            System.out.println("Error guardando notificaciones: " + e.getMessage());
+        }
+    }
+
+    public ArrayList<Notificacion> leerNotificaciones(String user) {
+        File archivo = new File(getPathNotificaciones(user));
+        if (!archivo.exists() || archivo.length() == 0) {
+            return new ArrayList<>();
+        }
+        try (ObjectInputStream in = new ObjectInputStream(new FileInputStream(archivo))) {
+            return (ArrayList<Notificacion>) in.readObject();
+        } catch (IOException | ClassNotFoundException e) {
+            return new ArrayList<>();
+        }
+    }
+
+    public void agregarNotificacion(String userDestino, Notificacion notif) {
+        ArrayList<Notificacion> lista = leerNotificaciones(userDestino);
+        lista.add(notif);
+        guardarNotificaciones(userDestino, lista);
+    }
+
+    public void eliminarNotificacion(String user, int index) {
+        ArrayList<Notificacion> lista = leerNotificaciones(user);
+        if (index >= 0 && index < lista.size()) {
+            lista.remove(index);
+            guardarNotificaciones(user, lista);
+        }
+    }
+
+    public void marcarNotificacionesVistas() {
+        ArrayList<Notificacion> lista = leerNotificaciones(getUsuarioUser(0));
+        for (Notificacion n : lista) {
+            n.marcarVista();
+        }
+        guardarNotificaciones(getUsuarioUser(0), lista);
+    }
+
+    public boolean hayNotificacionesSinVer() {
+        for (Notificacion n : leerNotificaciones(getUsuarioUser(0))) {
+            if (!n.isVista()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public ArrayList<String> getSolicitudesPendientes() {
+        ArrayList<String> pendientes = new ArrayList<>();
+        File archivo = new File(getPath(getUsuarioUser(0)) + "/followers.ins");
+        if (!archivo.exists()) {
+            return pendientes;
+        }
+        try (RandomAccessFile followers = getFileFollowers(getUsuarioUser(0))) {
+            followers.seek(0);
+            while (followers.getFilePointer() < followers.length()) {
+                String nombre = followers.readUTF();
+                int estado = followers.readInt();
+                if (estado == 2) {
+                    pendientes.add(nombre);
+                }
+            }
+        } catch (IOException e) {
+            System.out.println("Error leyendo solicitudes: " + e.getMessage());
+        }
+        return pendientes;
+    }
+
+    public void confirmarSolicitud(String solicitante) throws IOException {
+        try (RandomAccessFile followers = getFileFollowers(getUsuarioUser(0))) {
+            followers.seek(0);
+            while (followers.getFilePointer() < followers.length()) {
+                String nombre = followers.readUTF();
+                long posEstado = followers.getFilePointer();
+                int estado = followers.readInt();
+                if (nombre.equals(solicitante) && estado == 2) {
+                    followers.seek(posEstado);
+                    followers.writeInt(1); 
+                    break;
+                }
+            }
+        }
+
+        try (RandomAccessFile following = getFileFollowing(solicitante)) {
+            following.seek(0);
+            while (following.getFilePointer() < following.length()) {
+                String nombre = following.readUTF();
+                long posEstado = following.getFilePointer();
+                int estado = following.readInt();
+                if (nombre.equals(getUsuarioUser(0)) && estado == 2) {
+                    following.seek(posEstado);
+                    following.writeInt(1); 
+                    break;
+                }
+            }
+        }
+    }
+
+    public void eliminarSolicitud(String solicitante) throws IOException {
+        try (RandomAccessFile followers = getFileFollowers(getUsuarioUser(0))) {
+            followers.seek(0);
+            while (followers.getFilePointer() < followers.length()) {
+                String nombre = followers.readUTF();
+                long posEstado = followers.getFilePointer();
+                int estado = followers.readInt();
+                if (nombre.equals(solicitante) && estado == 2) {
+                    followers.seek(posEstado);
+                    followers.writeInt(3);
+                    break;
+                }
+            }
+        }
+
+        try (RandomAccessFile following = getFileFollowing(solicitante)) {
+            following.seek(0);
+            while (following.getFilePointer() < following.length()) {
+                String nombre = following.readUTF();
+                long posEstado = following.getFilePointer();
+                int estado = following.readInt();
+                if (nombre.equals(getUsuarioUser(0)) && estado == 2) {
+                    following.seek(posEstado);
+                    following.writeInt(3);
+                    break;
+                }
+            }
+        }
+    }
+    
+    public void hacerQueSeSignanEntreSi() {
+    String[] usernames = {"marvel", "jorgue_her", "game_theory"};
+    
+    for (String u : usernames) {
+        boolean existe = false;
+        for (Usuario usr : usuarios) {
+            if (usr.getUser().equals(u)) { existe = true; break; }
+        }
+        if (!existe) return;
+    }
+    
+    try {
+        File archivoFollowing = new File(getPath("marvel") + "/following.ins");
+        if (archivoFollowing.exists() && archivoFollowing.length() > 0) {
+            return;
+        }
+    } catch (Exception e) {  }
+
+    for (String userA : usernames) {
+        for (String userB : usernames) {
+            if (userA.equals(userB)) continue; 
+
+            try {
+                try (RandomAccessFile following = getFileFollowing(userA)) {
+                    following.seek(following.length());
+                    following.writeUTF(userB);
+                    following.writeInt(1); 
+                }
+
+                try (RandomAccessFile followers = getFileFollowers(userB)) {
+                    followers.seek(followers.length());
+                    followers.writeUTF(userA);
+                    followers.writeInt(1); 
+                }
+
+                System.out.println(userA + " ahora sigue a " + userB);
+
+            } catch (IOException e) {
+                System.out.println("Error creando relación " + userA + " → " + userB + ": " + e.getMessage());
+            }
+        }
+    }
+    System.out.println("✅ Todas las cuentas default se siguen entre sí.");
+}
 
 }

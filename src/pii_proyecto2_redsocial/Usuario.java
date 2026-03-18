@@ -36,7 +36,6 @@ public class Usuario implements Serializable{
     protected Date fecha;
     protected ImageIcon fotoPerfil;
     protected int edad;
-    //borrar despues
     private ArrayList<String> followersList;
     private ArrayList<String> followingList;
     
@@ -151,7 +150,6 @@ public class Usuario implements Serializable{
         return followingList;
     }
     
-    // Métodos útiles para que la lógica funcione después
     public void agregarSeguidor(String usernameSeguidor) {
         if (!followersList.contains(usernameSeguidor)) {
             followersList.add(usernameSeguidor);

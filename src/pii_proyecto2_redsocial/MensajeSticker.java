@@ -19,7 +19,6 @@ public class MensajeSticker extends Mensaje {
 
     @Override
     public void validarContenido() {
-        // Aquí podrías validar que la ruta no sea nula o que el sticker exista
         if (this.contenido == null || this.contenido.isEmpty()) {
             this.contenido = "default_sticker.png"; 
         }
@@ -27,6 +26,6 @@ public class MensajeSticker extends Mensaje {
 
     @Override
     public String getContenido() {
-        return contenido; // Retorna la ruta o identificador del sticker
+        return contenido; 
     }
 }

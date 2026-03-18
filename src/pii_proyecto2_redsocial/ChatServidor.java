@@ -14,16 +14,21 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class ChatServidor {
-    private static final int PUERTO = 5000;
     private static final Map<String, ObjectOutputStream> clientes = new ConcurrentHashMap<>();
 
-    public static void main(String[] args) throws IOException {
-        ServerSocket servidor = new ServerSocket(PUERTO);
-        System.out.println("Servidor escuchando en puerto " + PUERTO);
+    public static void main(String[] args) {
+        try {
+            ServerSocket servidor = new ServerSocket();
+            servidor.setReuseAddress(true); 
+            servidor.bind(new InetSocketAddress(5000));
+            System.out.println("Servidor escuchando en puerto 5000");
 
-        while (true) {
-            Socket socket = servidor.accept();
-            new Thread(() -> manejarCliente(socket)).start();
+            while (true) {
+                Socket socket = servidor.accept();
+                new Thread(() -> manejarCliente(socket)).start();
+            }
+        } catch (IOException e) {
+            System.out.println("Error en servidor: " + e.getMessage());
         }
     }
 
@@ -59,12 +64,12 @@ public class ChatServidor {
             try {
                 outDestino.writeObject(mensaje);
                 outDestino.flush();
-                System.out.println("📨 " + mensaje.getEmisor().getUser() + " → " + destino);
+                System.out.println(mensaje.getEmisor().getUser() + " → " + destino);
             } catch (IOException e) {
                 System.out.println("Error al reenviar a " + destino);
             }
         } else {
-            System.out.println("⚠️ " + destino + " no está conectado, mensaje perdido.");
+            System.out.println(destino + " no está conectado, mensaje perdido.");
         }
     }
 }

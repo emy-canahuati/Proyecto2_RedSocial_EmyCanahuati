@@ -7,8 +7,10 @@ package pii_proyecto2_redsocial;
 import java.awt.*;
 import java.awt.event.FocusAdapter;
 import java.awt.event.FocusEvent;
-import java.io.IOException;
+import java.awt.image.*;
+import java.io.*;
 import java.util.ArrayList;
+import javax.imageio.ImageIO;
 import javax.swing.*;
 import javax.swing.filechooser.FileNameExtensionFilter;
 import pii_proyecto2_redsocial.Usuario.TipoCuenta;
@@ -32,51 +34,52 @@ public class GUI extends JFrame {
     private boolean fotoFueCambiada = false;
 
     // Paneles principales
-    private JPanel panelChatActual;      // El área de las burbujas (Derecha)
-    private JPanel contenedorTarjetas;   // El área de los amigos (Izquierda)
-    private JTextField txtMensaje;       // Campo de texto para escribir
-    private String usuarioChatActivo = ""; // Para saber a quién le enviamos el mensaje
+    private JPanel panelChatActual;      
+    private JPanel contenedorTarjetas;   
+    private JTextField txtMensaje;       
+    private String usuarioChatActivo = ""; 
     private JLabel lblNombreChat;
     private boolean chatSeleccionado = false;
     private JButton btnEnviar;
-    private String tipoMensaje;
+    private String tipoMensaje = "Texto";
+    private JPanel panelStickersPopup = null;
+    private JComponent panelDerechodeMensajes = null;
+
+    private javax.swing.Timer timerNotificaciones;
 
     public GUI() {
-        setExtendedState(JFrame.MAXIMIZED_BOTH);
+        setSize(2000, 1000);
+        setMinimumSize(new Dimension(1024, 600));
         setResizable(true);
-        setUndecorated(true);
+        setUndecorated(false);
         setDefaultCloseOperation(EXIT_ON_CLOSE);
-
-        panelRegistrar();
+        setLocationRelativeTo(null);
 
         addWindowListener(new java.awt.event.WindowAdapter() {
             @Override
             public void windowClosing(java.awt.event.WindowEvent e) {
-                // Solo cerrar sesión si hay alguien logueado
                 try {
                     if (logica.getUsuario(0) != null) {
                         logica.cerrarSesion();
                     }
                 } catch (Exception ex) {
-                    // No hay sesión activa, ignorar
                 }
                 System.exit(0);
             }
         });
 
         panelRegistrar();
+        setVisible(true);
     }
 
     private JPanel crearContenedorConFondo() {
         JPanel panelFondo = new JPanel(null);
         panelFondo.setBounds(0, 0, screenSize.width, screenSize.height);
 
-        //cuadro blanco del centro
         panelPrincipal = new JPanel(null);
         panelPrincipal.setBackground(Color.WHITE);
         panelPrincipal.setBounds((screenSize.width - 1366) / 2, (screenSize.height - 786) / 2, 1366, 786);
 
-        // imagen de Fondo
         JLabel fondo = new JLabel();
         ImageIcon imgFondo = new ImageIcon("src/Imagenes/fondo1.jpg");
         Image imgSized = imgFondo.getImage().getScaledInstance(screenSize.width, screenSize.height, Image.SCALE_SMOOTH);
@@ -86,7 +89,7 @@ public class GUI extends JFrame {
         panelFondo.add(panelPrincipal);
         panelFondo.add(fondo);
 
-        return panelFondo; // Retornamos el panel que contiene al cuadro blanco
+        return panelFondo; 
     }
 
     public void panelRegistrar() {
@@ -101,14 +104,11 @@ public class GUI extends JFrame {
             @Override
             protected void paintComponent(Graphics g) {
                 super.paintComponent(g);
-                // 1. Cargamos la imagen
                 ImageIcon imgRegistrar = new ImageIcon("src/Imagenes/fondoRegistrar.png");
 
-                // 2. La dibujamos para que llene exactamente el tamaño de este panel (2/3 del centro)
                 if (imgRegistrar.getImage() != null) {
                     g.drawImage(imgRegistrar.getImage(), 0, 0, getWidth(), getHeight(), this);
                 } else {
-                    // Fondo de respaldo si no carga la imagen
                     g.setColor(Color.WHITE);
                     g.fillRect(0, 0, getWidth(), getHeight());
                 }
@@ -159,57 +159,65 @@ public class GUI extends JFrame {
         btnCrear.setBorder(BorderFactory.createLineBorder(new Color(0, 149, 246)));
         btnCrear.setBounds(50, 340, 350, 40);
 
-        // Variable de clase para evitar duplicados
-        // Dentro de btnLogin.addActionListener:
         btnLogin.addActionListener(e -> {
-            // 1. Obtener datos
             String usuario = txtUsuario.getText().trim();
             String pass = new String(txtPass.getPassword());
 
-            // 2. Validar con la lógica
-            if (logica.Login(usuario, pass)) {
-                if (logica.getUsuario(0).getEstado().name().equals("INACTIVO")) {
-                    if (lblErrorLogin == null) {
-                        lblErrorLogin = new JLabel("¿Seguro que desea activar la cuenta de nuevo?");
-                        lblErrorLogin.setFont(new Font("SansSerif", Font.PLAIN, 14));
-                        lblErrorLogin.setForeground(Color.BLUE);
-                        lblErrorLogin.setBounds(50, 380, 350, 20);
-                        panelContenido.add(lblErrorLogin);
+            int resultado = logica.LoginConEstado(usuario, pass);
 
-                        btnActivar = new JButton("Activar");
-                        btnActivar.setFont(new Font("SansSerif", Font.PLAIN, 14));
-                        btnActivar.setBounds(410, 380, 300, 20);
-                        btnActivar.setBackground(Color.white);
-                        btnActivar.setForeground(Color.blue);
-                        panelContenido.add(btnActivar);
-
-                    }
-                }
+            if (resultado == 1) {
+                limpiarMensajesError();
                 try {
                     logica.conectarSocket();
                 } catch (IOException ex) {
                     System.out.println("Servidor no disponible: " + ex.getMessage());
-                    // La app sigue funcionando sin mensajes en tiempo real
                 }
                 panelFeed();
-            } else {
-                // 3. Manejo de error visual
-                String mensaje = logica.estaActivoEnOtraVentana(usuario) ? "Este usuario ya tiene una sesion activa." : "Usuario o contraseña incorrectos.";
-                if (lblErrorLogin == null) {
-                    lblErrorLogin = new JLabel(mensaje);
-                    lblErrorLogin.setFont(new Font("SansSerif", Font.PLAIN, 14));
-                    lblErrorLogin.setForeground(Color.RED);
-                    lblErrorLogin.setBounds(50, 380, 350, 20);
-                    panelContenido.add(lblErrorLogin);
-                } else {
-                    lblErrorLogin.setText(mensaje);
-                }
 
-                // Forzar al panel a mostrar el nuevo label
+            } else if (resultado == 2) {
+                limpiarMensajesError();
+
+                lblErrorLogin = new JLabel("Esta cuenta está desactivada. ¿Deseas reactivarla?");
+                lblErrorLogin.setFont(new Font("SansSerif", Font.PLAIN, 13));
+                lblErrorLogin.setForeground(new Color(0, 100, 200));
+                lblErrorLogin.setBounds(50, 410, 380, 20);
+                panelContenido.add(lblErrorLogin);
+
+                btnActivar = new JButton("Confirmar reactivación");
+                btnActivar.setFont(new Font("SansSerif", Font.BOLD, 13));
+                btnActivar.setBackground(new Color(0, 149, 246));
+                btnActivar.setForeground(Color.WHITE);
+                btnActivar.setBorderPainted(false);
+                btnActivar.setBounds(50, 438, 350, 35);
+                panelContenido.add(btnActivar);
+
+                btnActivar.addActionListener(ev -> {
+                    logica.reactivarCuenta();
+                    try {
+                        logica.conectarSocket();
+                    } catch (IOException ex) {
+                        System.out.println("Servidor no disponible: " + ex.getMessage());
+                    }
+                    panelFeed();
+                });
+
                 panelContenido.revalidate();
                 panelContenido.repaint();
 
-                // Limpiar el campo de contraseña para reintentar
+            } else {
+                limpiarMensajesError();
+                String mensaje = logica.estaActivoEnOtraVentana(usuario)
+                        ? "Este usuario ya tiene una sesión activa."
+                        : "Usuario o contraseña incorrectos.";
+
+                lblErrorLogin = new JLabel(mensaje);
+                lblErrorLogin.setFont(new Font("SansSerif", Font.PLAIN, 14));
+                lblErrorLogin.setForeground(Color.RED);
+                lblErrorLogin.setBounds(50, 410, 350, 20);
+                panelContenido.add(lblErrorLogin);
+
+                panelContenido.revalidate();
+                panelContenido.repaint();
                 txtPass.setText("");
                 txtPass.requestFocus();
             }
@@ -244,6 +252,17 @@ public class GUI extends JFrame {
         repaint();
     }
 
+    private void limpiarMensajesError() {
+        if (lblErrorLogin != null) {
+            panelContenido.remove(lblErrorLogin);
+            lblErrorLogin = null;
+        }
+        if (btnActivar != null) {
+            panelContenido.remove(btnActivar);
+            btnActivar = null;
+        }
+    }
+
     private JTextField crearCampoEstilizado(String placeholder) {
         JTextField campo = new JTextField(placeholder);
         campo.setBackground(Color.WHITE);
@@ -261,14 +280,12 @@ public class GUI extends JFrame {
         panel.setBackground(Color.WHITE);
         panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
 
-        // Dimensiones y Fuentes Unificadas
         Dimension dimCampo = new Dimension(450, 40);
         Font fuente19 = new Font("SansSerif", Font.BOLD, 19);
         int espacioEntreSecciones = 20;
 
         panel.add(Box.createVerticalGlue());
 
-        // 1. TÍTULO
         JLabel lblTitulo = new JLabel("Empieza a usar Instagram");
         lblTitulo.setFont(new Font("SansSerif", Font.BOLD, 28));
         lblTitulo.setForeground(Color.BLACK);
@@ -283,7 +300,6 @@ public class GUI extends JFrame {
         panel.add(lblSubtitulo);
         panel.add(Box.createVerticalStrut(30));
 
-        // --- NOMBRE COMPLETO ---
         panel.add(crearFilaContenedora("Nombre Completo:", fuente19, dimCampo));
         JTextField txtNombre = crearCampoEstilizado("");
         txtNombre.setFont(fuente19);
@@ -292,7 +308,6 @@ public class GUI extends JFrame {
         panel.add(txtNombre);
         panel.add(Box.createVerticalStrut(espacioEntreSecciones));
 
-        // --- USUARIO ---
         panel.add(crearFilaContenedora("Nombre de Usuario:", fuente19, dimCampo));
         JTextField txtUser = crearCampoEstilizado("");
         txtUser.setFont(fuente19);
@@ -301,13 +316,11 @@ public class GUI extends JFrame {
         panel.add(txtUser);
         panel.add(Box.createVerticalStrut(espacioEntreSecciones));
 
-        // --- FILA DE EDAD Y GÉNERO ---
         JPanel filaInfo = new JPanel();
         filaInfo.setLayout(new BoxLayout(filaInfo, BoxLayout.X_AXIS));
         filaInfo.setOpaque(false);
         filaInfo.setMaximumSize(dimCampo);
 
-        // Columna Edad
         JPanel colEdad = new JPanel();
         colEdad.setLayout(new BoxLayout(colEdad, BoxLayout.Y_AXIS));
         colEdad.setOpaque(false);
@@ -323,7 +336,6 @@ public class GUI extends JFrame {
         colEdad.add(Box.createVerticalStrut(5));
         colEdad.add(txtEdad);
 
-        // Columna Género
         JPanel colGen = new JPanel();
         colGen.setLayout(new BoxLayout(colGen, BoxLayout.Y_AXIS));
         colGen.setOpaque(false);
@@ -348,8 +360,7 @@ public class GUI extends JFrame {
         panel.add(filaInfo);
         panel.add(Box.createVerticalStrut(espacioEntreSecciones));
 
-        // --- CONTRASEÑA ---
-        // --- CONTRASEÑA ---
+      
         panel.add(crearFilaContenedora("Contraseña:", fuente19, dimCampo));
         JPasswordField txtPass = new JPasswordField();
         txtPass.setFont(fuente19);
@@ -360,7 +371,6 @@ public class GUI extends JFrame {
         txtPass.setAlignmentX(Component.CENTER_ALIGNMENT);
         panel.add(txtPass);
 
-// Mensaje de validación (Debajo del campo)
         JLabel lblVal = new JLabel("Mín. 8 caracteres, 1 Símbolo, 1 Mayúscula");
         lblVal.setFont(new Font("SansSerif", Font.PLAIN, 14));
         lblVal.setForeground(Color.GRAY);
@@ -370,26 +380,19 @@ public class GUI extends JFrame {
         txtPass.addKeyListener(new java.awt.event.KeyAdapter() {
             @Override
             public void keyReleased(java.awt.event.KeyEvent e) {
-                // CORRECCIÓN: Convertir char[] a String de forma segura para validar
                 String p = new String(txtPass.getPassword());
 
-                // Lógica de validación:
-                // 1. Longitud >= 8
-                // 2. Contiene al menos una mayúscula (!p.equals(p.toLowerCase()))
-                // 3. Contiene al menos un símbolo (Regex: .*[!@#$%^&*()].*)
                 boolean largoOk = p.length() >= 8;
                 boolean mayusOk = !p.equals(p.toLowerCase()) && !p.equals("");
                 boolean symbolOk = p.matches(".*[!@#$%^&*()_+\\-=\\[\\]{};':\"\\\\|,.<>\\/?].*");
 
                 if (largoOk && mayusOk && symbolOk) {
                     lblVal.setText("Contraseña segura");
-                    lblVal.setForeground(new Color(0, 150, 0)); // Verde oscuro para legibilidad
+                    lblVal.setForeground(new Color(0, 150, 0)); 
                 } else {
                     lblVal.setText("Mín. 8 caracteres, 1 Símbolo, 1 Mayúscula");
-                    lblVal.setForeground(new Color(200, 0, 0)); // Rojo si no cumple
-                }
-
-                // Si el campo está vacío, volver al color gris original
+                    lblVal.setForeground(new Color(200, 0, 0)); 
+                }        
                 if (p.isEmpty()) {
                     lblVal.setForeground(Color.GRAY);
                 }
@@ -416,7 +419,7 @@ public class GUI extends JFrame {
         btnFoto.addActionListener(e -> {
             String rutaImagen = abrirExploradorArchivos();
             if (rutaImagen != null) {
-                this.fotoPerfil = new ImageIcon(rutaImagen, rutaImagen); // descripción = ruta
+                this.fotoPerfil = new ImageIcon(rutaImagen, rutaImagen); 
                 btnFoto.setText("Foto Seleccionada");
                 btnFoto.setForeground(Color.BLACK);
             }
@@ -429,7 +432,7 @@ public class GUI extends JFrame {
         btnReg.setBackground(new Color(0, 149, 246));
         btnReg.setForeground(Color.WHITE);
         btnReg.setFont(fuente19);
-        btnReg.setMaximumSize(dimCampo); // Mismo ancho que btnFoto
+        btnReg.setMaximumSize(dimCampo); 
         btnReg.setAlignmentX(Component.CENTER_ALIGNMENT);
 
         btnReg.addActionListener(e -> {
@@ -445,7 +448,6 @@ public class GUI extends JFrame {
                 return;
             }
 
-            // Procesar cada error encontrado
             if (opciones.contains(2)) {
                 aplicarErrorCampo(txtNombre, errorVacio);
             }
@@ -467,7 +469,7 @@ public class GUI extends JFrame {
                 aplicarErrorCampo(txtEdad, "Edad invalida");
             }
             if (opciones.contains(6)) {
-                txtPass.setEchoChar((char) 0); // Quita los puntos para leer el error
+                txtPass.setEchoChar((char) 0);
                 txtPass.setText(errorVacio);
                 txtPass.setForeground(Color.RED);
 
@@ -476,7 +478,7 @@ public class GUI extends JFrame {
                     public void focusGained(FocusEvent e) {
                         if (new String(txtPass.getPassword()).equals(errorVacio)) {
                             txtPass.setText("");
-                            txtPass.setEchoChar('•'); // Vuelve a poner los puntos de seguridad
+                            txtPass.setEchoChar('•'); 
                             txtPass.setForeground(Color.BLACK);
                         }
                     }
@@ -526,7 +528,6 @@ public class GUI extends JFrame {
         JFileChooser selector = new JFileChooser();
         selector.setDialogTitle("Seleccionar Foto de Perfil");
 
-        // Filtro para que solo acepte imágenes
         FileNameExtensionFilter filtro = new FileNameExtensionFilter("Imágenes (JPG, PNG, GIF)", "jpg", "png", "gif");
         selector.setFileFilter(filtro);
 
@@ -535,13 +536,13 @@ public class GUI extends JFrame {
         if (resultado == JFileChooser.APPROVE_OPTION) {
             return selector.getSelectedFile().getPath();
         }
-        return null; // El usuario canceló la selección
+        return null; 
     }
 
     private JPanel crearFilaContenedora(String texto, Font font, Dimension dim) {
         JPanel p = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
         p.setOpaque(false);
-        p.setMaximumSize(dim); // Esto centra el panel de la label respecto al campo
+        p.setMaximumSize(dim); 
         JLabel l = new JLabel(texto);
         l.setFont(font);
         l.setForeground(Color.BLACK);
@@ -566,15 +567,14 @@ public class GUI extends JFrame {
     }
 
     public void panelFeed() {
+        logica.recargarPublicaciones();
         getContentPane().removeAll();
         JPanel contenedor = crearContenedorConFondo();
         JPanel panel = (JPanel) contenedor.getComponent(0);
         panel.setLayout(new BorderLayout());
 
-        // --- BARRA LATERAL (Izquierda) ---
         construirSidebar();
 
-        // --- ÁREA CENTRAL (Feed) ---
         JPanel feedArea = new JPanel();
         feedArea.setLayout(new BoxLayout(feedArea, BoxLayout.Y_AXIS));
         feedArea.setBackground(new Color(250, 250, 250));
@@ -582,9 +582,8 @@ public class GUI extends JFrame {
         try {
             ArrayList<Publicacion> miFeed = logica.getFeed();
 
-            // 3. Dibujar las tarjetas
             for (Publicacion p : miFeed) {
-                JPanel postCard = crearTarjetaPost(p); // El método que definimos antes
+                JPanel postCard = crearTarjetaPost(p); 
 
                 JPanel centralizer = new JPanel(new FlowLayout(FlowLayout.CENTER, 0, 20));
                 centralizer.setOpaque(false);
@@ -592,7 +591,6 @@ public class GUI extends JFrame {
                 feedArea.add(centralizer);
             }
 
-            // Mensaje si el feed está vacío
             if (miFeed.isEmpty()) {
                 JLabel vacio = new JLabel("No hay publicaciones nuevas. ¡Sigue a más personas!");
                 vacio.setBorder(BorderFactory.createEmptyBorder(50, 0, 0, 0));
@@ -603,13 +601,11 @@ public class GUI extends JFrame {
         } catch (IOException e) {
             System.out.println("Error al cargar el feed: " + e.getMessage());
         }
-        // --- CONFIGURACIÓN DEL SCROLL ---
         JScrollPane scroll = new JScrollPane(feedArea);
         scroll.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_ALWAYS);
         scroll.getVerticalScrollBar().setUnitIncrement(25); // Movimiento suave
         scroll.setBorder(null);
 
-        // Unimos todo al contenedor principal
         panel.add(sidebarPanel, BorderLayout.WEST);
         panel.add(scroll, BorderLayout.CENTER);
 
@@ -618,7 +614,6 @@ public class GUI extends JFrame {
         repaint();
     }
 
-    // --- MÉTODO UNIVERSAL PARA EL SIDEBAR (Para no repetir código) ---
     private void construirSidebar() {
         sidebarPanel = new JPanel();
         sidebarPanel.setLayout(new BoxLayout(sidebarPanel, BoxLayout.Y_AXIS));
@@ -626,16 +621,32 @@ public class GUI extends JFrame {
         sidebarPanel.setPreferredSize(new Dimension(220, 786));
         sidebarPanel.setBorder(BorderFactory.createMatteBorder(0, 0, 0, 1, Color.LIGHT_GRAY));
 
-        String[] menu = {"🏠 Inicio", "🔍 Buscar", "✉️ Mensajes", "❤️ Notificaciones", "➕ Crear", "👤 Perfil", "≡ Configuración"};
+        String[] menu = {"🏠 Inicio", "🔍 Buscar", "✉️ Mensajes",
+            "❤️ Notificaciones", "➕ Crear", "👤 Perfil", "≡ Configuración"};
         sidebarPanel.add(Box.createVerticalStrut(30));
 
+        boolean hayNotifs = logica.hayNotificacionesSinVer();
+
         for (String opcion : menu) {
+            JPanel filaBtnMenu = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
+            filaBtnMenu.setOpaque(false);
+            filaBtnMenu.setMaximumSize(new Dimension(220, 50));
+
             JButton btnMenu = new JButton(opcion);
             btnMenu.setFont(new Font("SansSerif", Font.PLAIN, 16));
             btnMenu.setAlignmentX(Component.LEFT_ALIGNMENT);
-            btnMenu.setBorder(BorderFactory.createEmptyBorder(12, 25, 12, 10));
+            btnMenu.setBorder(BorderFactory.createEmptyBorder(12, 25, 12, 5));
             btnMenu.setContentAreaFilled(false);
             btnMenu.setCursor(new Cursor(Cursor.HAND_CURSOR));
+
+            filaBtnMenu.add(btnMenu);
+
+            if (opcion.contains("Notificaciones") && hayNotifs) {
+                JLabel punto = new JLabel("●");
+                punto.setForeground(new Color(237, 73, 73));
+                punto.setFont(new Font("SansSerif", Font.BOLD, 10));
+                filaBtnMenu.add(punto);
+            }
 
             btnMenu.addActionListener(e -> {
                 if (opcion.contains("Inicio")) {
@@ -656,9 +667,46 @@ public class GUI extends JFrame {
                 if (opcion.contains("Mensajes")) {
                     panelMensajes();
                 }
-                // Agregar los demás según necesites
+                if (opcion.contains("Notificaciones")) {
+                    panelNotificaciones();
+                }
             });
-            sidebarPanel.add(btnMenu);
+
+            sidebarPanel.add(filaBtnMenu);
+
+            if (timerNotificaciones != null) {
+                timerNotificaciones.stop();
+            }
+            timerNotificaciones = new javax.swing.Timer(5000, e -> {
+                for (Component c : sidebarPanel.getComponents()) {
+                    if (c instanceof JPanel) {
+                        JPanel fila = (JPanel) c;
+                        for (Component btn : fila.getComponents()) {
+                            if (btn instanceof JButton && ((JButton) btn).getText().contains("Notificaciones")) {
+                                boolean hayNotifis = logica.hayNotificacionesSinVer()
+                                        || !logica.getSolicitudesPendientes().isEmpty();
+
+                                for (Component sub : fila.getComponents()) {
+                                    if (sub instanceof JLabel && ((JLabel) sub).getText().equals("●")) {
+                                        fila.remove(sub);
+                                        break;
+                                    }
+                                }
+                                if (hayNotifis) {
+                                    JLabel punto = new JLabel("●");
+                                    punto.setForeground(new Color(237, 73, 73));
+                                    punto.setFont(new Font("SansSerif", Font.BOLD, 10));
+                                    fila.add(punto);
+                                }
+                                fila.revalidate();
+                                fila.repaint();
+                                break;
+                            }
+                        }
+                    }
+                }
+            });
+            timerNotificaciones.start();
         }
     }
 
@@ -668,32 +716,82 @@ public class GUI extends JFrame {
         post.setBorder(BorderFactory.createLineBorder(new Color(219, 219, 219)));
         int ancho = 600;
 
-        // --- HEADER --- (Igual al anterior)
         JLabel userHeader = new JLabel("  " + publi.getAutor());
         userHeader.setPreferredSize(new Dimension(ancho, 40));
         userHeader.setFont(new Font("SansSerif", Font.BOLD, 14));
+        userHeader.setCursor(new Cursor(Cursor.HAND_CURSOR)); 
+
+        userHeader.addMouseListener(new java.awt.event.MouseAdapter() {
+            @Override
+            public void mousePressed(java.awt.event.MouseEvent e) {
+                String autorUser = publi.getAutor();
+                if (autorUser.equals(logica.getUsuarioUser(0))) {
+                    panelPerfil(); 
+                } else {
+                    logica.setUsuarioSelec(autorUser);
+                    panelPerfilPersona();
+                }
+            }
+
+            @Override
+            public void mouseEntered(java.awt.event.MouseEvent e) {
+                userHeader.setForeground(new Color(0, 149, 246));
+            }
+
+            @Override
+            public void mouseExited(java.awt.event.MouseEvent e) {
+                userHeader.setForeground(Color.BLACK);
+            }
+        });
+
         post.add(userHeader, BorderLayout.NORTH);
 
-        // --- IMAGEN --- (Igual al anterior)
         if (publi.getRutaImagen() != null && !publi.getRutaImagen().isEmpty()) {
             JLabel lblImg = new JLabel();
             try {
                 ImageIcon icon = new ImageIcon(publi.getRutaImagen());
-                Image img = icon.getImage().getScaledInstance(ancho, 500, Image.SCALE_SMOOTH);
-                lblImg.setIcon(new ImageIcon(img));
+
+                int imgAncho = ancho;
+                int imgAlto;
+                String forma = publi.getFormato(); 
+                switch (forma != null ? forma : "Cuadrada") {
+                    case "Vertical":
+                        imgAlto = 700; 
+                        break;
+                    case "Horizontal":
+                        imgAlto = 350; 
+                        break;
+                    default: 
+                        imgAlto = ancho; 
+                        break;
+                }
+
+                BufferedImage original = ImageIO.read(new File(publi.getRutaImagen()));
+                if (original != null) {
+                    java.awt.image.BufferedImage scaled = new java.awt.image.BufferedImage(
+                            imgAncho, imgAlto, java.awt.image.BufferedImage.TYPE_INT_ARGB);
+                    Graphics2D g2d = scaled.createGraphics();
+                    g2d.setRenderingHint(RenderingHints.KEY_INTERPOLATION,
+                            RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+                    g2d.drawImage(original, 0, 0, imgAncho, imgAlto, null);
+                    g2d.dispose();
+                    lblImg.setIcon(new ImageIcon(scaled));
+                } else {
+                    Image img = icon.getImage().getScaledInstance(imgAncho, imgAlto, Image.SCALE_SMOOTH);
+                    lblImg.setIcon(new ImageIcon(img));
+                }
+                lblImg.setHorizontalAlignment(SwingConstants.CENTER);
+                post.add(lblImg, BorderLayout.CENTER);
             } catch (Exception e) {
-                lblImg.setText("Error imagen");
+                post.add(new JLabel("Error imagen"), BorderLayout.CENTER);
             }
-            post.add(lblImg, BorderLayout.CENTER);
         }
 
-        // --- FOOTER DINÁMICO ---
         JPanel footer = new JPanel();
         footer.setLayout(new BoxLayout(footer, BoxLayout.Y_AXIS));
         footer.setBackground(Color.WHITE);
         footer.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
 
-        // Panel de Botones (Like y Comentario)
         JPanel panelAcciones = new JPanel(new FlowLayout(FlowLayout.LEFT, 15, 0));
         panelAcciones.setOpaque(false);
 
@@ -710,14 +808,13 @@ public class GUI extends JFrame {
         panelAcciones.add(btnLike);
         panelAcciones.add(btnComentar);
 
-        // Contador de Likes
         JLabel lblLikes = new JLabel(publi.getCantLikes() + " Me gusta");
         lblLikes.setFont(new Font("SansSerif", Font.BOLD, 13));
 
-        // Texto de la publicación
         JLabel lblCaption = new JLabel("<html><b>" + publi.getAutor() + "</b> " + publi.getContenido() + "</html>");
-
-        // Área de comentarios
+        lblCaption.setFont(new Font("SansSerif", Font.PLAIN, 13));
+        lblCaption.setHorizontalAlignment(SwingConstants.LEFT); 
+        lblCaption.setAlignmentX(Component.LEFT_ALIGNMENT);
         JPanel panelComentarios = new JPanel();
         panelComentarios.setLayout(new BoxLayout(panelComentarios, BoxLayout.Y_AXIS));
         panelComentarios.setOpaque(false);
@@ -728,17 +825,14 @@ public class GUI extends JFrame {
             panelComentarios.add(l);
         }
 
-        // --- EVENTOS ---
-        // Acción de Like
+      
         btnLike.addActionListener(e -> {
             publi.pushLike(logica.getUsuarioUser(0));
-            // Guardar cambio en archivo (debes implementar esto en logica)
             logica.actualizarPublicacion(publi);
             btnLike.setText(publi.tieneLikeDe(logica.getUsuarioUser(0)) ? "❤️" : "🤍");
             lblLikes.setText(publi.getCantLikes() + " Me gusta");
         });
 
-        // Acción de Comentar
         btnComentar.addActionListener(e -> {
             String input = JOptionPane.showInputDialog(this, "Escribe un comentario:");
             if (input != null && !input.trim().isEmpty()) {
@@ -746,7 +840,6 @@ public class GUI extends JFrame {
                 publi.addComentario(nuevoComentario);
                 logica.actualizarPublicacion(publi);
 
-                // Refresco instantáneo de la lista de comentarios
                 JLabel l = new JLabel("<html>" + nuevoComentario + "</html>");
                 panelComentarios.add(l);
                 panelComentarios.revalidate();
@@ -774,24 +867,20 @@ public class GUI extends JFrame {
         JPanel panel = (JPanel) contenedor.getComponent(0);
         panel.setLayout(new BorderLayout());
 
-        // --- 1. BARRA LATERAL (Sidebar compacta para dar espacio al grid) ---
         construirSidebar();
         if (sidebarPanel != null) {
-            sidebarPanel.setPreferredSize(new Dimension(220, 786)); // Sidebar más delgada
+            sidebarPanel.setPreferredSize(new Dimension(220, 786)); 
         }
 
-        // --- 2. ÁREA DE CONTENIDO ---
         JPanel profileContent = new JPanel();
         profileContent.setLayout(new BoxLayout(profileContent, BoxLayout.Y_AXIS));
         profileContent.setBackground(Color.WHITE);
 
-        // Encabezado con nueva jerarquía
         JPanel header = new JPanel(null);
-        header.setPreferredSize(new Dimension(935, 450)); // Aumentamos alto para el botón abajo
+        header.setPreferredSize(new Dimension(935, 450)); 
         header.setMaximumSize(new Dimension(Integer.MAX_VALUE, 450));
         header.setOpaque(false);
 
-        // Foto de Perfil (320x320)
         JPanel fotoCircular = new JPanel() {
             @Override
             protected void paintComponent(Graphics g) {
@@ -812,25 +901,22 @@ public class GUI extends JFrame {
                 g2.draw(circulo);
             }
         };
-        fotoCircular.setBounds(40, 40, 320, 320); // Medida exacta 320x320
+        fotoCircular.setBounds(40, 40, 320, 320); 
         header.add(fotoCircular);
 
         int textoX = 390;
 
-        // 1. Nombre de Usuario (Top)
         JLabel lblUser = new JLabel(logica.getUsuarioUser(0));
         lblUser.setFont(new Font("SansSerif", Font.BOLD, 22));
         lblUser.setBounds(textoX, 50, 300, 30);
         header.add(lblUser);
 
-        // 2. Nombre Real
         JLabel lblNombre = new JLabel(logica.getUsuarioNombre(0));
         lblNombre.setFont(new Font("SansSerif", Font.PLAIN, 15));
         lblNombre.setForeground(Color.GRAY);
         lblNombre.setBounds(textoX, 80, 300, 25);
         header.add(lblNombre);
 
-        // 3. Estadísticas
         int followers = logica.getUsuarioFollowers(0);
         int following = logica.getUsuarioFollowing(0);
         JPanel panelStats = new JPanel(new FlowLayout(FlowLayout.LEFT, 20, 0));
@@ -863,7 +949,6 @@ public class GUI extends JFrame {
         panelStats.add(btnFollowing);
         header.add(panelStats);
 
-        // 4. Descripción / Biografía
         JTextArea txtBio = new JTextArea(logica.getUsuarioBio(0));
         txtBio.setFont(new Font("SansSerif", Font.PLAIN, 14));
         txtBio.setBounds(textoX, 155, 450, 80);
@@ -873,10 +958,9 @@ public class GUI extends JFrame {
         txtBio.setEditable(false);
         header.add(txtBio);
 
-        // 5. BOTÓN EDITAR PERFIL (Ahora debajo de la descripción)
         JButton btnConfig = new JButton("Editar Perfil");
         btnConfig.setFont(new Font("SansSerif", Font.BOLD, 13));
-        btnConfig.setBounds(textoX, 245, 150, 32); // Posicionado en Y=245
+        btnConfig.setBounds(textoX, 245, 150, 32); 
         btnConfig.setBackground(new Color(239, 239, 239));
         btnConfig.setBorder(BorderFactory.createLineBorder(new Color(219, 219, 219)));
         btnConfig.setFocusPainted(false);
@@ -886,19 +970,27 @@ public class GUI extends JFrame {
         profileContent.add(header);
         profileContent.add(new JSeparator());
 
-        // Grid de 4 columnas (Miniaturas 300x300)
-        JPanel gridContainer = new JPanel(new GridLayout(0, 4, 10, 10));
+        JPanel gridContainer = new JPanel(new GridLayout(0, 4, 3, 3));
         gridContainer.setBackground(Color.WHITE);
-        gridContainer.setBorder(BorderFactory.createEmptyBorder(20, 20, 20, 20));
+        gridContainer.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
 
-        for (int i = 0; i < 12; i++) {
-            JPanel postThumb = new JPanel();
-            postThumb.setPreferredSize(new Dimension(300, 300)); // Medida exacta 300x300
-            postThumb.setBackground(new Color(250, 250, 250));
-            postThumb.setBorder(BorderFactory.createLineBorder(new Color(230, 230, 230)));
-            gridContainer.add(postThumb);
+        ArrayList<Publicacion> misPublis = logica.getPubliPerfil(logica.getUsuario(0));
+
+        if (misPublis.isEmpty()) {
+            JPanel vacio = new JPanel(new GridBagLayout());
+            vacio.setBackground(Color.WHITE);
+            vacio.setPreferredSize(new Dimension(935, 200));
+            JLabel lblVacio = new JLabel("Aún no hay publicaciones.");
+            lblVacio.setForeground(Color.GRAY);
+            vacio.add(lblVacio);
+            profileContent.add(vacio);
+        } else {
+            for (Publicacion publi : misPublis) {
+                JPanel thumb = crearMiniatura(publi, false); 
+                gridContainer.add(thumb);
+            }
+            profileContent.add(gridContainer);
         }
-        profileContent.add(gridContainer);
 
         JScrollPane scroll = new JScrollPane(profileContent);
         scroll.setBorder(null);
@@ -918,7 +1010,6 @@ public class GUI extends JFrame {
         JPanel panel = (JPanel) contenedor.getComponent(0);
         panel.setLayout(new BorderLayout());
 
-        // Llamada a la sidebar angosta
         construirSidebar();
 
         JButton btnVolver = new JButton("← Volver");
@@ -928,14 +1019,12 @@ public class GUI extends JFrame {
         btnVolver.setForeground(new Color(0, 149, 246));
         btnVolver.setCursor(new Cursor(Cursor.HAND_CURSOR));
         btnVolver.addActionListener(e -> panelBuscar());
-        // Verificación en consola
         imprimirSeguidoresConsola();
 
         JPanel profileContent = new JPanel();
         profileContent.setLayout(new BoxLayout(profileContent, BoxLayout.Y_AXIS));
         profileContent.setBackground(Color.WHITE);
 
-        // ENCABEZADO (Ajustado a 450 de alto para que quepan botones abajo)
         JPanel header = new JPanel(null);
         header.setPreferredSize(new Dimension(935, 450));
         header.setMaximumSize(new Dimension(Integer.MAX_VALUE, 450));
@@ -961,25 +1050,22 @@ public class GUI extends JFrame {
                 g2.draw(circulo);
             }
         };
-        fotoCircular.setBounds(40, 40, 320, 320); // Alineación a la izquierda
+        fotoCircular.setBounds(40, 40, 320, 320); 
         header.add(fotoCircular);
 
-        int textoX = 390; // Nueva coordenada X para textos
+        int textoX = 390;
 
-        // 1. Username (Arriba)
         JLabel lblUser = new JLabel(logica.getUsuarioUser(1));
         lblUser.setFont(new Font("SansSerif", Font.BOLD, 22));
         lblUser.setBounds(textoX, 50, 300, 30);
         header.add(lblUser);
 
-        // 2. Nombre Real (Debajo del user)
         JLabel lblNombre = new JLabel(logica.getUsuarioNombre(1));
         lblNombre.setFont(new Font("SansSerif", Font.PLAIN, 15));
         lblNombre.setForeground(Color.GRAY);
         lblNombre.setBounds(textoX, 80, 300, 25);
         header.add(lblNombre);
 
-        // 3. Stats
         int followers = logica.getUsuarioFollowers(1);
         int following = logica.getUsuarioFollowing(1);
         JPanel panelStats = new JPanel(new FlowLayout(FlowLayout.LEFT, 20, 0));
@@ -1012,7 +1098,6 @@ public class GUI extends JFrame {
         panelStats.add(btnFollowing);
         header.add(panelStats);
 
-        // 4. Bio
         JTextArea txtBio = new JTextArea(logica.getUsuarioBio(1));
         txtBio.setFont(new Font("SansSerif", Font.PLAIN, 14));
         txtBio.setBounds(textoX, 150, 450, 80);
@@ -1022,8 +1107,7 @@ public class GUI extends JFrame {
         txtBio.setEditable(false);
         header.add(txtBio);
 
-        // 5. Botones (Debajo de la Bio)
-        // 5. Botones (Debajo de la Bio)
+        
         try {
             JPanel panelBotones = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 0));
             panelBotones.setOpaque(false);
@@ -1034,28 +1118,27 @@ public class GUI extends JFrame {
             btnPrincipal.setPreferredSize(new Dimension(140, 32));
             btnPrincipal.setFocusPainted(false);
             btnPrincipal.setBorderPainted(false);
-            btnPrincipal.setOpaque(true); // Necesario para ver el background en Mac/Linux
+            btnPrincipal.setOpaque(true);
 
-            // --- LOGICA DE ACTUALIZACIÓN ---
             btnPrincipal.addActionListener(e -> {
                 try {
-                    // Ejecuta la lógica de seguir/dejar de seguir en los archivos
                     logica.addFollowing(logica.getUsuario(1));
-
-                    // REFRESCAMOS EL TEXTO Y COLOR INMEDIATAMENTE
                     refrescarBotonSeguir(btnPrincipal);
 
+                    int newFollowers = logica.getUsuarioFollowers(1);
+                    int newFollowing = logica.getUsuarioFollowing(1);
+                    btnFollowers.setText("<html><b>" + newFollowers + "</b> seguidores</html>");
+                    btnFollowing.setText("<html><b>" + newFollowing + "</b> seguidos</html>");
+
                 } catch (IOException ex) {
-                    System.out.println("Error en la persistencia: " + ex.getMessage());
+                    System.out.println("Error: " + ex.getMessage());
                 }
             });
 
-            // Estado inicial al cargar el perfil
             refrescarBotonSeguir(btnPrincipal);
 
             panelBotones.add(btnPrincipal);
 
-            // Botón de Mensaje (Solo si no es privada o si ya lo sigues)
             if (!logica.getUsuarioTipo(1).equals("Privada") || logica.isUsuarioLoggedFollower(logica.getUsuario(1)) == 1) {
                 JButton btnMensaje = new JButton("Mensaje");
                 btnMensaje.setPreferredSize(new Dimension(100, 32));
@@ -1063,6 +1146,14 @@ public class GUI extends JFrame {
                 btnMensaje.setFocusPainted(false);
                 btnMensaje.setBorderPainted(false);
                 btnMensaje.setOpaque(true);
+                btnMensaje.addActionListener(e -> {
+                    panelMensajes();
+                    SwingUtilities.invokeLater(() -> {
+                        String userDestino = logica.getUsuarioUser(1);
+                        añadirTarjetaMensaje(userDestino);
+                        iniciarChatCon(userDestino);
+                    });
+                });
                 panelBotones.add(btnMensaje);
             }
 
@@ -1079,27 +1170,37 @@ public class GUI extends JFrame {
         profileContent.add(header);
         profileContent.add(new JSeparator());
 
-        // --- GRID DE 4 COLUMNAS ---
         JPanel gridContainer = new JPanel();
         gridContainer.setBackground(Color.WHITE);
         try {
-            if (logica.getUsuarioTipo(1).equals("Publica") || logica.isUsuarioLoggedFollower(logica.getUsuario(1)) == 1) {
-                gridContainer.setLayout(new GridLayout(0, 4, 10, 10));
-                gridContainer.setBorder(BorderFactory.createEmptyBorder(20, 20, 20, 20));
-                for (int i = 0; i < 12; i++) {
-                    JPanel postThumb = new JPanel();
-                    postThumb.setPreferredSize(new Dimension(300, 300));
-                    postThumb.setBackground(new Color(250, 250, 250));
-                    postThumb.setBorder(BorderFactory.createLineBorder(new Color(230, 230, 230)));
-                    gridContainer.add(postThumb);
+            if (logica.getUsuarioTipo(1).equals("Publica")
+                    || logica.isUsuarioLoggedFollower(logica.getUsuario(1)) == 1) {
+
+                ArrayList<Publicacion> susPublis = logica.getPubliPerfil(logica.getUsuario(1));
+
+                if (susPublis.isEmpty()) {
+                    gridContainer.setLayout(new GridBagLayout());
+                    gridContainer.setPreferredSize(new Dimension(935, 200));
+                    JLabel lblVacio = new JLabel("Este usuario aún no tiene publicaciones.");
+                    lblVacio.setForeground(Color.GRAY);
+                    gridContainer.add(lblVacio);
+                } else {
+                    gridContainer.setLayout(new GridLayout(0, 4, 3, 3));
+                    gridContainer.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+                    for (Publicacion publi : susPublis) {
+                        JPanel thumb = crearMiniatura(publi, true); 
+                        gridContainer.add(thumb);
+                    }
                 }
             } else {
                 gridContainer.setLayout(new GridBagLayout());
                 gridContainer.setPreferredSize(new Dimension(935, 300));
-                gridContainer.add(new JLabel("<html><center>🔒<br><b>Esta cuenta es privada</b></center></html>"));
+                gridContainer.add(new JLabel(
+                        "<html><center>🔒<br><b>Esta cuenta es privada</b></center></html>"
+                ));
             }
         } catch (IOException ex) {
-            System.getLogger(GUI.class.getName()).log(System.Logger.Level.ERROR, (String) null, ex);
+            System.out.println(ex.getMessage());
         }
 
         profileContent.add(gridContainer);
@@ -1115,11 +1216,348 @@ public class GUI extends JFrame {
         repaint();
     }
 
+    private JPanel crearMiniatura(Publicacion publi, boolean puedeComentar) {
+        JPanel thumb = new JPanel(new BorderLayout());
+        thumb.setPreferredSize(new Dimension(300, 300));
+        thumb.setMaximumSize(new Dimension(300, 300));
+        thumb.setBackground(new Color(240, 240, 240));
+        thumb.setBorder(BorderFactory.createLineBorder(new Color(219, 219, 219)));
+        thumb.setCursor(new Cursor(Cursor.HAND_CURSOR));
+
+        if (publi.getRutaImagen() != null && !publi.getRutaImagen().isEmpty()) {
+            try {
+                ImageIcon icon = new ImageIcon(publi.getRutaImagen());
+                Image img = icon.getImage().getScaledInstance(300, 300, Image.SCALE_SMOOTH);
+                JLabel lblImg = new JLabel(new ImageIcon(img));
+                lblImg.setHorizontalAlignment(SwingConstants.CENTER);
+                thumb.add(lblImg, BorderLayout.CENTER);
+            } catch (Exception e) {
+                thumb.add(new JLabel("📷", SwingConstants.CENTER), BorderLayout.CENTER);
+            }
+        } else {
+            JLabel lblTxt = new JLabel(
+                    "<html><center>" + publi.getContenido() + "</center></html>",
+                    SwingConstants.CENTER
+            );
+            lblTxt.setFont(new Font("SansSerif", Font.PLAIN, 12));
+            thumb.add(lblTxt, BorderLayout.CENTER);
+        }
+
+        thumb.addMouseListener(new java.awt.event.MouseAdapter() {
+            @Override
+            public void mouseEntered(java.awt.event.MouseEvent e) {
+                thumb.setBorder(BorderFactory.createLineBorder(new Color(0, 149, 246), 2));
+            }
+
+            @Override
+            public void mouseExited(java.awt.event.MouseEvent e) {
+                thumb.setBorder(BorderFactory.createLineBorder(new Color(219, 219, 219)));
+            }
+
+            @Override
+            public void mousePressed(java.awt.event.MouseEvent e) {
+                abrirPublicacionDetalle(publi, puedeComentar);
+            }
+        });
+
+        return thumb;
+    }
+
+    private void abrirPublicacionDetalle(Publicacion publiInicial, boolean puedeComentar) {
+        getContentPane().removeAll();
+        JPanel contenedor = crearContenedorConFondo();
+        JPanel panel = (JPanel) contenedor.getComponent(0);
+        panel.setLayout(new BorderLayout());
+
+        construirSidebar();
+
+        JButton btnVolver = new JButton("← Volver al perfil");
+        btnVolver.setFont(new Font("SansSerif", Font.BOLD, 14));
+        btnVolver.setContentAreaFilled(false);
+        btnVolver.setBorderPainted(false);
+        btnVolver.setForeground(new Color(0, 149, 246));
+        btnVolver.setCursor(new Cursor(Cursor.HAND_CURSOR));
+        btnVolver.addActionListener(e -> {
+            if (puedeComentar) {
+                panelPerfilPersona(); 
+            } else {
+                panelPerfil();      
+            }
+        });
+
+        JPanel barraVolver = new JPanel(new FlowLayout(FlowLayout.LEFT, 15, 8));
+        barraVolver.setBackground(Color.WHITE);
+        barraVolver.setBorder(BorderFactory.createMatteBorder(0, 0, 1, 0, new Color(219, 219, 219)));
+        barraVolver.add(btnVolver);
+
+        JPanel areaPublis = new JPanel();
+        areaPublis.setLayout(new BoxLayout(areaPublis, BoxLayout.Y_AXIS));
+        areaPublis.setBackground(new Color(250, 250, 250));
+
+        Usuario autor = logica.getAutorPublicacion(publiInicial.getAutor());
+        ArrayList<Publicacion> todasLasPublis = logica.getPubliPerfil(autor);
+
+        todasLasPublis.remove(publiInicial);
+        todasLasPublis.add(0, publiInicial);
+
+        for (Publicacion publi : todasLasPublis) {
+            JPanel card = crearTarjetaPostDetalle(publi, puedeComentar);
+            JPanel centralizer = new JPanel(new FlowLayout(FlowLayout.CENTER, 0, 20));
+            centralizer.setOpaque(false);
+            centralizer.add(card);
+            areaPublis.add(centralizer);
+        }
+
+        JScrollPane scroll = new JScrollPane(areaPublis);
+        scroll.setBorder(null);
+        scroll.getVerticalScrollBar().setUnitIncrement(20);
+
+        JPanel centro = new JPanel(new BorderLayout());
+        centro.add(barraVolver, BorderLayout.NORTH);
+        centro.add(scroll, BorderLayout.CENTER);
+
+        panel.add(sidebarPanel, BorderLayout.WEST);
+        panel.add(centro, BorderLayout.CENTER);
+
+        add(contenedor);
+        revalidate();
+        repaint();
+    }
+
+    private JPanel crearTarjetaPostDetalle(Publicacion publi, boolean puedeAgregarComentarios) {
+        JPanel post = new JPanel(new BorderLayout());
+        post.setBackground(Color.WHITE);
+        post.setBorder(BorderFactory.createLineBorder(new Color(219, 219, 219)));
+        int ancho = 600;
+
+        JLabel userHeader = new JLabel("  " + publi.getAutor());
+        userHeader.setPreferredSize(new Dimension(ancho, 40));
+        userHeader.setFont(new Font("SansSerif", Font.BOLD, 14));
+        userHeader.setCursor(new Cursor(Cursor.HAND_CURSOR)); 
+
+        userHeader.addMouseListener(new java.awt.event.MouseAdapter() {
+            @Override
+            public void mousePressed(java.awt.event.MouseEvent e) {
+                String autorUser = publi.getAutor();
+                if (autorUser.equals(logica.getUsuarioUser(0))) {
+                    panelPerfil(); 
+                } else {
+                    logica.setUsuarioSelec(autorUser);
+                    panelPerfilPersona();
+                }
+            }
+
+            @Override
+            public void mouseEntered(java.awt.event.MouseEvent e) {
+                userHeader.setForeground(new Color(0, 149, 246));
+            }
+
+            @Override
+            public void mouseExited(java.awt.event.MouseEvent e) {
+                userHeader.setForeground(Color.BLACK);
+            }
+        });
+        post.add(userHeader, BorderLayout.NORTH);
+
+        // 
+        if (publi.getRutaImagen() != null && !publi.getRutaImagen().isEmpty()) {
+            JLabel lblImg = new JLabel();
+            try {
+                ImageIcon icon = new ImageIcon(publi.getRutaImagen());
+
+                int imgAncho = ancho;
+                int imgAlto;
+                String forma = publi.getFormato(); 
+                switch (forma != null ? forma : "Cuadrada") {
+                    case "Vertical":
+                        imgAlto = 700; 
+                        break;
+                    case "Horizontal":
+                        imgAlto = 350; 
+                        break;
+                    default:
+                        imgAlto = ancho; 
+                        break;
+                }
+
+                BufferedImage original = ImageIO.read(new File(publi.getRutaImagen()));
+                if (original != null) {
+                    java.awt.image.BufferedImage scaled = new java.awt.image.BufferedImage(
+                            imgAncho, imgAlto, java.awt.image.BufferedImage.TYPE_INT_ARGB);
+                    Graphics2D g2d = scaled.createGraphics();
+                    g2d.setRenderingHint(RenderingHints.KEY_INTERPOLATION,
+                            RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+                    g2d.drawImage(original, 0, 0, imgAncho, imgAlto, null);
+                    g2d.dispose();
+                    lblImg.setIcon(new ImageIcon(scaled));
+                } else {
+                    lblImg.setIcon(cargarImagenCorregida(publi.getRutaImagen(), ancho, 500));
+                }
+                lblImg.setHorizontalAlignment(SwingConstants.CENTER);
+                post.add(lblImg, BorderLayout.CENTER);
+            } catch (Exception e) {
+                post.add(new JLabel("Error imagen"), BorderLayout.CENTER);
+            }
+        }
+
+        JPanel footer = new JPanel();
+        footer.setLayout(new BoxLayout(footer, BoxLayout.Y_AXIS));
+        footer.setBackground(Color.WHITE);
+        footer.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+
+        JPanel panelAcciones = new JPanel(new FlowLayout(FlowLayout.LEFT, 15, 0));
+        panelAcciones.setOpaque(false);
+
+        JButton btnLike = new JButton(
+                publi.tieneLikeDe(logica.getUsuarioUser(0)) ? "❤️" : "🤍"
+        );
+        btnLike.setContentAreaFilled(false);
+        btnLike.setBorder(null);
+        btnLike.setFont(new Font("Serif", Font.PLAIN, 24));
+        btnLike.addActionListener(e -> {
+            publi.pushLike(logica.getUsuarioUser(0));
+            logica.actualizarPublicacion(publi);
+            btnLike.setText(publi.tieneLikeDe(logica.getUsuarioUser(0)) ? "❤️" : "🤍");
+        });
+        panelAcciones.add(btnLike);
+
+        if (puedeAgregarComentarios) {
+            JButton btnComentar = new JButton("💬");
+            btnComentar.setContentAreaFilled(false);
+            btnComentar.setBorder(null);
+            btnComentar.setFont(new Font("Serif", Font.PLAIN, 24));
+            panelAcciones.add(btnComentar);
+
+            JPanel panelComentarios = new JPanel();
+            panelComentarios.setLayout(new BoxLayout(panelComentarios, BoxLayout.Y_AXIS));
+            panelComentarios.setOpaque(false);
+            for (String c : publi.getComentarios()) {
+                JLabel l = new JLabel("<html>" + c + "</html>");
+                l.setFont(new Font("SansSerif", Font.PLAIN, 12));
+                panelComentarios.add(l);
+            }
+
+            btnComentar.addActionListener(e -> {
+                String input = JOptionPane.showInputDialog(this, "Escribe un comentario:");
+                if (input != null && !input.trim().isEmpty()) {
+                    String nuevo = "<b>" + logica.getUsuarioUser(0) + "</b> " + input;
+                    publi.addComentario(nuevo);
+                    logica.actualizarPublicacion(publi);
+                    JLabel l = new JLabel("<html>" + nuevo + "</html>");
+                    l.setFont(new Font("SansSerif", Font.PLAIN, 12));
+                    panelComentarios.add(l);
+                    panelComentarios.revalidate();
+                    panelComentarios.repaint();
+                }
+            });
+
+            JLabel lblLikes = new JLabel(publi.getCantLikes() + " Me gusta");
+            lblLikes.setFont(new Font("SansSerif", Font.BOLD, 13));
+            btnLike.addActionListener(ev
+                    -> lblLikes.setText(publi.getCantLikes() + " Me gusta")
+            );
+
+            JLabel lblCaption = new JLabel("<html><b>" + publi.getAutor() + "</b> " + publi.getContenido() + "</html>");
+            lblCaption.setFont(new Font("SansSerif", Font.PLAIN, 13));
+            lblCaption.setHorizontalAlignment(SwingConstants.LEFT); 
+            lblCaption.setAlignmentX(Component.LEFT_ALIGNMENT);
+
+            footer.add(panelAcciones);
+            footer.add(lblLikes);
+            footer.add(Box.createVerticalStrut(5));
+            footer.add(lblCaption);
+            footer.add(Box.createVerticalStrut(8));
+            footer.add(panelComentarios);
+
+        } else {
+            JLabel lblLikes = new JLabel(publi.getCantLikes() + " Me gusta");
+            lblLikes.setFont(new Font("SansSerif", Font.BOLD, 13));
+            btnLike.addActionListener(ev
+                    -> lblLikes.setText(publi.getCantLikes() + " Me gusta")
+            );
+
+            JLabel lblCaption = new JLabel("<html><b>" + publi.getAutor() + "</b> " + publi.getContenido() + "</html>");
+            lblCaption.setFont(new Font("SansSerif", Font.PLAIN, 13));
+            lblCaption.setHorizontalAlignment(SwingConstants.LEFT); 
+            lblCaption.setAlignmentX(Component.LEFT_ALIGNMENT);
+
+            footer.add(panelAcciones);
+            footer.add(lblLikes);
+            footer.add(Box.createVerticalStrut(5));
+            footer.add(lblCaption);
+        }
+
+        post.add(footer, BorderLayout.SOUTH);
+        post.setMaximumSize(new Dimension(ancho, post.getPreferredSize().height));
+        return post;
+    }
+
+    private ImageIcon cargarImagenCorregida(String ruta, int ancho, int alto) {
+        try {
+            BufferedImage original = ImageIO.read(new File(ruta));
+            if (original == null) {
+                return new ImageIcon(new ImageIcon(ruta)
+                        .getImage().getScaledInstance(ancho, alto, Image.SCALE_SMOOTH));
+            }
+
+            BufferedImage corregida = original;
+
+            if (original.getWidth() > original.getHeight()
+                    && original.getWidth() > original.getHeight() * 1.2) {
+                corregida = original;
+            } else if (original.getHeight() > original.getWidth() * 1.2) {
+                corregida = original;
+            }
+            if (original.getWidth() < original.getHeight() && ancho >= alto) {
+                corregida = rotarImagen(original, -90);
+            } else if (original.getWidth() > original.getHeight() && ancho < alto) {
+                corregida = rotarImagen(original, 90);
+            }
+
+            BufferedImage resultado = new BufferedImage(ancho, alto, BufferedImage.TYPE_INT_RGB);
+            Graphics2D g2d = resultado.createGraphics();
+            g2d.setRenderingHint(RenderingHints.KEY_INTERPOLATION,
+                    RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+            g2d.setRenderingHint(RenderingHints.KEY_RENDERING,
+                    RenderingHints.VALUE_RENDER_QUALITY);
+            g2d.setColor(Color.WHITE);
+            g2d.fillRect(0, 0, ancho, alto);
+            g2d.drawImage(corregida, 0, 0, ancho, alto, null);
+            g2d.dispose();
+
+            return new ImageIcon(resultado);
+
+        } catch (Exception e) {
+            try {
+                return new ImageIcon(new ImageIcon(ruta)
+                        .getImage().getScaledInstance(ancho, alto, Image.SCALE_SMOOTH));
+            } catch (Exception ex) {
+                return null;
+            }
+        }
+    }
+
+    private BufferedImage rotarImagen(BufferedImage original, int grados) {
+        double rad = Math.toRadians(grados);
+        int nuevoAncho = (grados == 90 || grados == -90)
+                ? original.getHeight() : original.getWidth();
+        int nuevoAlto = (grados == 90 || grados == -90)
+                ? original.getWidth() : original.getHeight();
+
+        BufferedImage rotada = new BufferedImage(nuevoAncho, nuevoAlto, original.getType());
+        Graphics2D g2d = rotada.createGraphics();
+        g2d.translate((nuevoAncho - original.getWidth()) / 2.0,
+                (nuevoAlto - original.getHeight()) / 2.0);
+        g2d.rotate(rad, original.getWidth() / 2.0, original.getHeight() / 2.0);
+        g2d.drawImage(original, 0, 0, null);
+        g2d.dispose();
+        return rotada;
+    }
+
     private void mostrarListaUsuarios(JButton origen, String titulo, String listaNombres) {
         JPopupMenu popup = new JPopupMenu();
         popup.setBorder(BorderFactory.createLineBorder(new Color(219, 219, 219)));
 
-        // Título no clicable
         JMenuItem lblTitulo = new JMenuItem(titulo);
         lblTitulo.setFont(new Font("SansSerif", Font.BOLD, 14));
         lblTitulo.setEnabled(false);
@@ -1144,15 +1582,18 @@ public class GUI extends JFrame {
                 item.setCursor(new Cursor(Cursor.HAND_CURSOR));
 
                 item.addActionListener(e -> {
-                    // Al hacer clic en un nombre, ir a su perfil
-                    logica.setUsuarioSelec(nombre.trim());
-                    panelPerfilPersona();
+                    String nombreTrimmed = nombre.trim();
+                    if (nombreTrimmed.equals(logica.getUsuarioUser(0))) {
+                        panelPerfil();
+                    } else {
+                        logica.setUsuarioSelec(nombreTrimmed);
+                        panelPerfilPersona();
+                    }
                 });
                 popup.add(item);
             }
         }
 
-        // Mostrar debajo del botón que se clickeó
         popup.show(origen, 0, origen.getHeight());
     }
 
@@ -1164,17 +1605,16 @@ public class GUI extends JFrame {
 
             int relacion = logica.isUsuarioLoggedFollower(logica.getUsuario(1));
 
-            if (relacion == 3 || relacion == 4) { // No se sigue o se eliminó
+            if (relacion == 3 || relacion == 4) {
                 btn.setText("Seguir");
-                btn.setBackground(new Color(0, 149, 246)); // Azul
+                btn.setBackground(new Color(0, 149, 246)); 
                 btn.setForeground(Color.WHITE);
-            } else { // Siguiendo (1) o Pendiente (2)
+            } else { 
                 btn.setText(relacion == 1 ? "Siguiendo" : "Pendiente");
-                btn.setBackground(new Color(239, 239, 239)); // Gris
+                btn.setBackground(new Color(239, 239, 239)); 
                 btn.setForeground(Color.BLACK);
             }
 
-            // Forzar al componente a repintarse
             btn.revalidate();
             btn.repaint();
 
@@ -1194,7 +1634,7 @@ public class GUI extends JFrame {
         JPanel panelBlanco = (JPanel) contenedorBase.getComponent(0);
         panelBlanco.setLayout(new BorderLayout());
 
-        this.fotoPerfil = null; // Reiniciar al entrar al panel
+        this.fotoPerfil = null; 
         this.fotoFueCambiada = false;
         Font fuente19 = new Font("SansSerif", Font.BOLD, 19);
         Font fuentePlain19 = new Font("SansSerif", Font.PLAIN, 19);
@@ -1203,7 +1643,6 @@ public class GUI extends JFrame {
 
         construirSidebar();
 
-        // --- PANEL DE CONTENIDO ---
         JPanel contenido = new JPanel();
         contenido.setLayout(new BoxLayout(contenido, BoxLayout.Y_AXIS));
         contenido.setBackground(Color.WHITE);
@@ -1215,7 +1654,6 @@ public class GUI extends JFrame {
         contenido.add(lblTitulo);
         contenido.add(Box.createVerticalStrut(30));
 
-        // Nombre y Usuario
         contenido.add(crearFilaContenedora("Nombre Completo:", fuente19, dimCampo));
         JTextField txtNombre = crearCampoEstilizado(logica.getUsuarioNombre(0));
         txtNombre.setFont(fuentePlain19);
@@ -1230,7 +1668,6 @@ public class GUI extends JFrame {
         contenido.add(txtUser);
         contenido.add(Box.createVerticalStrut(espacioEntreSecciones));
 
-        // Fila Edad y Género
         JPanel filaInfo = new JPanel();
         filaInfo.setLayout(new BoxLayout(filaInfo, BoxLayout.X_AXIS));
         filaInfo.setOpaque(false);
@@ -1278,7 +1715,6 @@ public class GUI extends JFrame {
         contenido.add(filaInfo);
         contenido.add(Box.createVerticalStrut(espacioEntreSecciones));
 
-        // Contraseña
         contenido.add(crearFilaContenedora("Contraseña:", fuente19, dimCampo));
         JPasswordField txtPass = new JPasswordField(logica.getUsuarioContra(0));
         txtPass.setFont(fuentePlain19);
@@ -1293,7 +1729,6 @@ public class GUI extends JFrame {
         contenido.add(lblVal);
         contenido.add(Box.createVerticalStrut(espacioEntreSecciones));
 
-        // Tipo de Cuenta
         contenido.add(crearFilaContenedora("Tipo de cuenta:", fuente19, dimCampo));
         JComboBox<String> cbTipo = new JComboBox<>(new String[]{"Publica", "Privada"});
         cbTipo.setSelectedItem(logica.getUsuarioTipo(0));
@@ -1303,7 +1738,6 @@ public class GUI extends JFrame {
         contenido.add(cbTipo);
         contenido.add(Box.createVerticalStrut(espacioEntreSecciones));
 
-        // --- DESCRIPCIÓN (Agregado correctamente al panel) ---
         contenido.add(crearFilaContenedora("Descripción:", fuente19, dimCampo));
         JTextArea txtBio = new JTextArea(logica.getUsuarioBio(0));
         txtBio.setFont(fuentePlain19);
@@ -1311,13 +1745,12 @@ public class GUI extends JFrame {
         txtBio.setWrapStyleWord(true);
 
         JScrollPane scrollBio = new JScrollPane(txtBio);
-        scrollBio.setMaximumSize(new Dimension(450, 100)); // Altura fija para que no tape nada
+        scrollBio.setMaximumSize(new Dimension(450, 100)); 
         scrollBio.setPreferredSize(new Dimension(450, 100));
         scrollBio.setBorder(BorderFactory.createLineBorder(Color.GRAY));
         contenido.add(scrollBio);
         contenido.add(Box.createVerticalStrut(25));
 
-        // Foto
         JButton btnFoto = new JButton("Cambiar Foto de Perfil");
         btnFoto.setFont(fuente19);
         btnFoto.setMaximumSize(dimCampo);
@@ -1325,7 +1758,7 @@ public class GUI extends JFrame {
         btnFoto.addActionListener(e -> {
             String ruta = abrirExploradorArchivos();
             if (ruta != null) {
-                this.fotoPerfil = new ImageIcon(ruta, ruta); // ✅ descripción = ruta
+                this.fotoPerfil = new ImageIcon(ruta, ruta); 
                 this.fotoFueCambiada = true;
                 btnFoto.setText("Foto Seleccionada");
             }
@@ -1370,8 +1803,8 @@ public class GUI extends JFrame {
         estilizarBotonAccion(btnEliminar, dimCampo, new Color(200, 0, 0));
         btnEliminar.addActionListener(e -> {
             if (JOptionPane.showConfirmDialog(this, "¿Seguro?", "Alerta", 0) == 0) {
-                logica.getUsuario(0).setEstado("INACTIVA");
-                logica.cerrarSesion();
+                logica.getUsuario(0).setEstado("INACTIVO"); // no "INACTIVA"
+                logica.desactivarYCerrarSesion();
                 panelRegistrar();
             }
         });
@@ -1601,6 +2034,11 @@ public class GUI extends JFrame {
         contenedorTarjetas = new JPanel();
         contenedorTarjetas.setLayout(new BoxLayout(contenedorTarjetas, BoxLayout.Y_AXIS));
         contenedorTarjetas.setBackground(Color.WHITE);
+
+        ArrayList<String> chatsGuardados = logica.getUsuariosConChat();
+        for (String username : chatsGuardados) {
+            añadirTarjetaMensaje(username);
+        }
         JScrollPane scrollTarjetas = new JScrollPane(contenedorTarjetas);
         scrollTarjetas.setBorder(null);
         panelIzquierdo.add(scrollTarjetas, BorderLayout.CENTER);
@@ -1609,32 +2047,105 @@ public class GUI extends JFrame {
         JPanel panelDerecho = new JPanel(new BorderLayout());
         panelDerecho.setBackground(Color.WHITE);
 
+// ── Usar JLayeredPane para poder superponer el popup ─────────
+        JLayeredPane layeredPane = new JLayeredPane() {
+            @Override
+            public void doLayout() {
+                // El panelBase ocupa todo el espacio disponible
+                for (Component c : getComponents()) {
+                    if (c != panelStickersPopup) {
+                        c.setBounds(0, 0, getWidth(), getHeight());
+                    }
+                }
+            }
+        };
+        layeredPane.setLayout(null);// default para la capa base
+
+// Panel base que contiene chat + barra entrada
+        JPanel panelBase = new JPanel(new BorderLayout());
+        panelBase.setBackground(Color.WHITE);
+
+// Header
         JPanel headerChatActual = new JPanel(new BorderLayout());
         headerChatActual.setBackground(Color.WHITE);
         headerChatActual.setPreferredSize(new Dimension(0, 60));
         headerChatActual.setBorder(BorderFactory.createMatteBorder(0, 0, 1, 0, new Color(219, 219, 219)));
 
-        lblNombreChat = new JLabel("  Selecciona un chat"); // Cambiará en iniciarChatCon
+// Nombre del chat (izquierda)
+        lblNombreChat = new JLabel("  Selecciona un chat");
         lblNombreChat.setFont(new Font("SansSerif", Font.BOLD, 16));
         headerChatActual.add(lblNombreChat, BorderLayout.WEST);
-        panelDerecho.add(headerChatActual, BorderLayout.NORTH);
 
-// 2. Área de burbujas
+// Botón eliminar conversación (derecha) — empieza oculto
+        JButton btnEliminarChat = new JButton("🗑 Eliminar conversación");
+        btnEliminarChat.setFont(new Font("SansSerif", Font.PLAIN, 12));
+        btnEliminarChat.setForeground(new Color(200, 0, 0));
+        btnEliminarChat.setContentAreaFilled(false);
+        btnEliminarChat.setBorderPainted(false);
+        btnEliminarChat.setCursor(new Cursor(Cursor.HAND_CURSOR));
+        btnEliminarChat.setVisible(false); // oculto hasta que se seleccione un chat
+        btnEliminarChat.setBorder(BorderFactory.createEmptyBorder(0, 0, 0, 15));
+
+        btnEliminarChat.addActionListener(e -> {
+            if (!chatSeleccionado || usuarioChatActivo.isEmpty()) {
+                return;
+            }
+
+            int confirm = JOptionPane.showConfirmDialog(
+                    this,
+                    "¿Eliminar la conversación con " + usuarioChatActivo + "?\nEsta acción no se puede deshacer.",
+                    "Eliminar conversación",
+                    JOptionPane.YES_NO_OPTION,
+                    JOptionPane.WARNING_MESSAGE
+            );
+
+            if (confirm == JOptionPane.YES_OPTION) {
+                logica.eliminarConversacion(usuarioChatActivo);
+
+                // Limpiar el área de burbujas
+                panelChatActual.removeAll();
+                panelChatActual.setLayout(new BoxLayout(panelChatActual, BoxLayout.Y_AXIS));
+                panelChatActual.revalidate();
+                panelChatActual.repaint();
+
+                // Volver al estado inicial del chat
+                lblNombreChat.setText("  Selecciona un chat");
+                btnEliminarChat.setVisible(false);
+                chatSeleccionado = false;
+                usuarioChatActivo = "";
+                txtMensaje.setEnabled(false);
+                btnEnviar.setEnabled(false);
+
+                // Mostrar pantalla de inicio de chat
+                mostrarPantallaInicioChat();
+            }
+        });
+
+        headerChatActual.add(btnEliminarChat, BorderLayout.EAST);
+        panelBase.add(headerChatActual, BorderLayout.NORTH);
+
+// Área de burbujas
         panelChatActual = new JPanel();
         panelChatActual.setLayout(new BoxLayout(panelChatActual, BoxLayout.Y_AXIS));
         panelChatActual.setBackground(Color.WHITE);
         JScrollPane scrollChat = new JScrollPane(panelChatActual);
         scrollChat.setBorder(null);
-        panelDerecho.add(scrollChat, BorderLayout.CENTER);
+        panelBase.add(scrollChat, BorderLayout.CENTER);
 
-// 3. Barra de entrada más grande
-        JPanel barraEntrada = new JPanel(new BorderLayout(15, 0));
+// 3. Barra de entrada
+        JPanel barraEntrada = new JPanel(new BorderLayout(10, 0));
         barraEntrada.setBackground(Color.WHITE);
-        barraEntrada.setBorder(BorderFactory.createEmptyBorder(20, 20, 20, 20)); // Más margen
+        barraEntrada.setBorder(BorderFactory.createEmptyBorder(12, 15, 12, 15));
+        panelBase.add(barraEntrada, BorderLayout.SOUTH);
 
+// Campo de texto
         txtMensaje = new JTextField("Escribe un mensaje...");
-        txtMensaje.setPreferredSize(new Dimension(0, 45)); // Más alto
+        txtMensaje.setPreferredSize(new Dimension(0, 42));
         txtMensaje.setFont(new Font("SansSerif", Font.PLAIN, 14));
+        txtMensaje.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(new Color(219, 219, 219), 1, true),
+                BorderFactory.createEmptyBorder(5, 10, 5, 10)
+        ));
         txtMensaje.addFocusListener(new java.awt.event.FocusAdapter() {
             @Override
             public void focusGained(java.awt.event.FocusEvent e) {
@@ -1653,17 +2164,42 @@ public class GUI extends JFrame {
             }
         });
 
-        btnEnviar = new JButton("Enviar ");
+// Panel de botones derecha (sticker + enviar)
+        JPanel botonesEntrada = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
+        botonesEntrada.setOpaque(false);
+
+// ── Botón Sticker ─────────────────────────────────────────────
+        JButton btnSticker = new JButton("😊");
+        btnSticker.setFont(new Font("Segoe UI Emoji", Font.PLAIN, 20));
+        btnSticker.setContentAreaFilled(false);
+        btnSticker.setBorderPainted(false);
+        btnSticker.setCursor(new Cursor(Cursor.HAND_CURSOR));
+        btnSticker.setToolTipText("Stickers");
+
+// ── Botón Enviar ──────────────────────────────────────────────
+        btnEnviar = new JButton("Enviar");
         btnEnviar.setForeground(new Color(0, 149, 246));
-        btnEnviar.setFont(new Font("SansSerif", Font.BOLD, 15));
+        btnEnviar.setFont(new Font("SansSerif", Font.BOLD, 14));
         btnEnviar.setContentAreaFilled(false);
-        btnEnviar.setBorder(null);
+        btnEnviar.setBorderPainted(false);
+        btnEnviar.setCursor(new Cursor(Cursor.HAND_CURSOR));
         btnEnviar.addActionListener(e -> enviarNuevoMensaje());
 
-        barraEntrada.add(txtMensaje, BorderLayout.CENTER);
-        barraEntrada.add(btnEnviar, BorderLayout.EAST);
-        panelDerecho.add(barraEntrada, BorderLayout.SOUTH);
+        botonesEntrada.add(btnSticker);
+        botonesEntrada.add(btnEnviar);
 
+        barraEntrada.add(txtMensaje, BorderLayout.CENTER);
+        barraEntrada.add(botonesEntrada, BorderLayout.EAST);
+        layeredPane.add(panelBase, JLayeredPane.DEFAULT_LAYER);
+        panelDerecho.add(layeredPane, BorderLayout.CENTER);
+
+        panelDerechodeMensajes = layeredPane;
+// Acción del botón sticker
+        btnSticker.addActionListener(e -> {
+            if (chatSeleccionado) {
+                mostrarMenuStickers(layeredPane, btnSticker); // ✅ layeredPane
+            }
+        });
         mostrarPantallaInicioChat();
 
         // --- ENSAMBLE FINAL ---
@@ -1681,7 +2217,211 @@ public class GUI extends JFrame {
         repaint();
     }
 
+    private void mostrarMenuStickers(JComponent panelContenedor, JButton btnOrigen) {
+        // Si ya hay un popup abierto, cerrarlo
+        if (panelStickersPopup != null) {
+            panelContenedor.remove(panelStickersPopup);
+            panelContenedor.revalidate();
+            panelContenedor.repaint();
+            panelStickersPopup = null;
+            return;
+        }
+
+        panelStickersPopup = new JPanel();
+        panelStickersPopup.setLayout(new BoxLayout(panelStickersPopup, BoxLayout.Y_AXIS));
+        panelStickersPopup.setBackground(Color.WHITE);
+        panelStickersPopup.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(new Color(219, 219, 219)),
+                BorderFactory.createEmptyBorder(10, 10, 10, 10)
+        ));
+
+        // ── Sección: Stickers Globales ────────────────────────────
+        JLabel lblGlobales = new JLabel("Stickers");
+        lblGlobales.setFont(new Font("SansSerif", Font.BOLD, 13));
+        lblGlobales.setForeground(Color.GRAY);
+        panelStickersPopup.add(lblGlobales);
+        panelStickersPopup.add(Box.createVerticalStrut(8));
+
+        JPanel gridGlobales = crearGridStickers(logica.getStickersGlobales());
+        panelStickersPopup.add(gridGlobales);
+
+        // ── Sección: Stickers Personales ─────────────────────────
+        ArrayList<String> personales = logica.getStickersPersonales();
+        if (!personales.isEmpty()) {
+            panelStickersPopup.add(Box.createVerticalStrut(12));
+            JLabel lblPersonales = new JLabel("Mis stickers");
+            lblPersonales.setFont(new Font("SansSerif", Font.BOLD, 13));
+            lblPersonales.setForeground(Color.GRAY);
+            panelStickersPopup.add(lblPersonales);
+            panelStickersPopup.add(Box.createVerticalStrut(8));
+
+            JPanel gridPersonales = crearGridStickers(personales);
+            panelStickersPopup.add(gridPersonales);
+        }
+
+        // ── Botón: Crear sticker propio ───────────────────────────
+        panelStickersPopup.add(Box.createVerticalStrut(12));
+        JSeparator sep = new JSeparator();
+        sep.setMaximumSize(new Dimension(Integer.MAX_VALUE, 1));
+        panelStickersPopup.add(sep);
+        panelStickersPopup.add(Box.createVerticalStrut(8));
+
+        JButton btnCrearSticker = new JButton("➕  Crear mi sticker");
+        btnCrearSticker.setFont(new Font("SansSerif", Font.BOLD, 13));
+        btnCrearSticker.setForeground(new Color(0, 149, 246));
+        btnCrearSticker.setContentAreaFilled(false);
+        btnCrearSticker.setBorderPainted(false);
+        btnCrearSticker.setCursor(new Cursor(Cursor.HAND_CURSOR));
+        btnCrearSticker.setAlignmentX(Component.LEFT_ALIGNMENT);
+        btnCrearSticker.addActionListener(e -> crearStickerPersonal(panelContenedor));
+        panelStickersPopup.add(btnCrearSticker);
+
+        // ── Posicionar popup encima de la barra de entrada ────────
+        panelStickersPopup.setPreferredSize(new Dimension(280, 250));
+        panelStickersPopup.setBounds(
+                panelContenedor.getWidth() - 295,
+                panelContenedor.getHeight() - 310,
+                280, 260
+        );
+
+        if (panelContenedor instanceof JLayeredPane) {
+            JLayeredPane lp = (JLayeredPane) panelContenedor;
+            // ✅ Usar add con Integer directamente, sin BorderLayout constraint
+            lp.add(panelStickersPopup, JLayeredPane.POPUP_LAYER);
+        } else {
+            panelContenedor.add(panelStickersPopup);
+        }
+        panelContenedor.revalidate();
+        panelContenedor.repaint();
+    }
+
+    private JPanel crearGridStickers(ArrayList<String> rutas) {
+        JPanel grid = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 6));
+        grid.setOpaque(false);
+
+        for (String ruta : rutas) {
+            JButton btnStk = new JButton();
+            btnStk.setPreferredSize(new Dimension(55, 55));
+            btnStk.setContentAreaFilled(false);
+            btnStk.setBorder(BorderFactory.createLineBorder(new Color(230, 230, 230), 1, true));
+            btnStk.setCursor(new Cursor(Cursor.HAND_CURSOR));
+
+            try {
+                ImageIcon icon = new ImageIcon(ruta);
+                Image img = icon.getImage().getScaledInstance(48, 48, Image.SCALE_SMOOTH);
+                btnStk.setIcon(new ImageIcon(img));
+            } catch (Exception ex) {
+                btnStk.setText("🖼");
+            }
+
+            // Al hacer clic, enviar como sticker
+            btnStk.addActionListener(e -> {
+                if (chatSeleccionado) {
+                    try {
+                        logica.enviarMensaje(1, ruta);
+                        ArrayList<Mensaje> msgs = logica.getMensajes();
+                        añadirBurbuja(msgs.get(msgs.size() - 1), true);
+
+                        if (panelStickersPopup != null && panelDerechodeMensajes != null) {
+                            panelDerechodeMensajes.remove(panelStickersPopup);
+                            panelDerechodeMensajes.revalidate();
+                            panelDerechodeMensajes.repaint();
+                            panelStickersPopup = null;
+                        }
+                    } catch (IOException ex) {
+                        System.out.println("Error enviando sticker: " + ex.getMessage());
+                    }
+                }
+            });
+
+            // Hover
+            btnStk.addMouseListener(new java.awt.event.MouseAdapter() {
+                @Override
+                public void mouseEntered(java.awt.event.MouseEvent e) {
+                    btnStk.setBorder(BorderFactory.createLineBorder(new Color(0, 149, 246), 2, true));
+                }
+
+                @Override
+                public void mouseExited(java.awt.event.MouseEvent e) {
+                    btnStk.setBorder(BorderFactory.createLineBorder(new Color(230, 230, 230), 1, true));
+                }
+            });
+
+            grid.add(btnStk);
+        }
+        return grid;
+    }
+
+    private void crearStickerPersonal(JComponent panelContenedor) {
+        // Cerrar popup primero
+        if (panelStickersPopup != null) {
+            panelContenedor.remove(panelStickersPopup);
+            panelContenedor.revalidate();
+            panelContenedor.repaint();
+            panelStickersPopup = null;
+        }
+
+        // Abrir explorador para seleccionar imagen
+        JFileChooser selector = new JFileChooser();
+        selector.setDialogTitle("Seleccionar imagen para tu sticker");
+        FileNameExtensionFilter filtro = new FileNameExtensionFilter(
+                "Imágenes (JPG, PNG, GIF)", "jpg", "png", "gif"
+        );
+        selector.setFileFilter(filtro);
+
+        int resultado = selector.showOpenDialog(this);
+        if (resultado != JFileChooser.APPROVE_OPTION) {
+            return;
+        }
+
+        String rutaSeleccionada = selector.getSelectedFile().getPath();
+
+        // Previsualización antes de confirmar
+        JPanel previewPanel = new JPanel(new BorderLayout(10, 10));
+        previewPanel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+
+        JLabel lblPreview = new JLabel();
+        try {
+            ImageIcon icon = new ImageIcon(rutaSeleccionada);
+            Image img = icon.getImage().getScaledInstance(120, 120, Image.SCALE_SMOOTH);
+            lblPreview.setIcon(new ImageIcon(img));
+            lblPreview.setHorizontalAlignment(SwingConstants.CENTER);
+        } catch (Exception e) {
+            lblPreview.setText("No se pudo cargar la imagen");
+        }
+
+        JLabel lblTexto = new JLabel("¿Usar esta imagen como sticker?");
+        lblTexto.setHorizontalAlignment(SwingConstants.CENTER);
+
+        previewPanel.add(lblTexto, BorderLayout.NORTH);
+        previewPanel.add(lblPreview, BorderLayout.CENTER);
+
+        int confirm = JOptionPane.showConfirmDialog(
+                this, previewPanel, "Nuevo Sticker",
+                JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE
+        );
+
+        if (confirm == JOptionPane.OK_OPTION) {
+            String nuevaRuta = logica.guardarStickerPersonal(rutaSeleccionada);
+            if (nuevaRuta != null) {
+                JOptionPane.showMessageDialog(this,
+                        "¡Sticker guardado!", "Éxito",
+                        JOptionPane.INFORMATION_MESSAGE
+                );
+            } else {
+                JOptionPane.showMessageDialog(this,
+                        "Error al guardar el sticker.", "Error",
+                        JOptionPane.ERROR_MESSAGE
+                );
+            }
+        }
+
+        panelContenedor.revalidate();
+        panelContenedor.repaint();
+    }
+
     private void mostrarPantallaInicioChat() {
+        logica.setChatActivo("");
         chatSeleccionado = false;
         panelChatActual.removeAll();
         panelChatActual.setLayout(new GridBagLayout()); // Para centrar el contenido
@@ -1720,7 +2460,7 @@ public class GUI extends JFrame {
         JPanel fila = new JPanel(new FlowLayout(esMio ? FlowLayout.RIGHT : FlowLayout.LEFT));
         fila.setOpaque(false);
         fila.setBorder(BorderFactory.createEmptyBorder(2, 10, 2, 10));
-        fila.setMaximumSize(new Dimension(Integer.MAX_VALUE, 80));
+        fila.setMaximumSize(new Dimension(Integer.MAX_VALUE, Integer.MAX_VALUE));
 
         JPanel columna = new JPanel();
         columna.setLayout(new BoxLayout(columna, BoxLayout.Y_AXIS));
@@ -1747,6 +2487,7 @@ public class GUI extends JFrame {
             ImageIcon imag = new ImageIcon(msj.getContenido());
             Image imgEscalada = imag.getImage().getScaledInstance(150, 150, Image.SCALE_SMOOTH);
             lblTexto.setIcon(new ImageIcon(imgEscalada));
+            lblTexto.setPreferredSize(new Dimension(150, 150));
         }
         lblTexto.setForeground(esMio ? Color.WHITE : Color.BLACK);
         lblTexto.setFont(new Font("SansSerif", Font.PLAIN, 13));
@@ -1780,9 +2521,11 @@ public class GUI extends JFrame {
         fila.add(columna);
         panelChatActual.add(fila);
         panelChatActual.revalidate();
+        panelChatActual.repaint(); // ✅ agregar esto
 
-        // Auto-scroll al final
         SwingUtilities.invokeLater(() -> {
+            panelChatActual.revalidate();
+            panelChatActual.repaint(); // ✅ también aquí
             Container parent = panelChatActual.getParent();
             if (parent instanceof JViewport) {
                 JScrollPane sp = (JScrollPane) parent.getParent();
@@ -1798,8 +2541,9 @@ public class GUI extends JFrame {
 
         if (chatSeleccionado && !texto.isEmpty() && !texto.equals(placeholder)) {
             try {
-                logica.enviarMensaje((tipoMensaje.equals("Texto") ? 0 : 1), texto); // lógica crea el Mensaje, guarda y envía
-                // Mostrar burbuja del mensaje recién enviado
+                // ✅ "Texto" es el default si tipoMensaje es null
+                int tipo = (tipoMensaje != null && tipoMensaje.equals("Sticker")) ? 1 : 0;
+                logica.enviarMensaje(tipo, texto);
                 ArrayList<Mensaje> msgs = logica.getMensajes();
                 añadirBurbuja(msgs.get(msgs.size() - 1), true);
                 txtMensaje.setText("");
@@ -1814,14 +2558,14 @@ public class GUI extends JFrame {
         menu.setBorder(BorderFactory.createLineBorder(new Color(219, 219, 219)));
 
         try {
-            String[] seguidos = logica.getListaNombresFollowing(0).split(", ");
+            ArrayList<String> contactos = logica.getContactosDisponibles(); // ✅ nuevo método
 
-            if (seguidos.length == 0 || seguidos[0].equals("Nadie")) {
-                JMenuItem vacio = new JMenuItem("No sigues a nadie");
+            if (contactos.isEmpty()) {
+                JMenuItem vacio = new JMenuItem("No hay contactos disponibles");
                 vacio.setEnabled(false);
                 menu.add(vacio);
             } else {
-                for (String nombre : seguidos) {
+                for (String nombre : contactos) {
                     JMenuItem item = new JMenuItem(nombre);
                     item.setPreferredSize(new Dimension(180, 35));
                     item.addActionListener(e -> {
@@ -1831,12 +2575,9 @@ public class GUI extends JFrame {
                     menu.add(item);
                 }
             }
-
-            // Mostrar desplazado a la izquierda si es necesario
             menu.show(botonOrigen, -150, botonOrigen.getHeight());
-
         } catch (Exception e) {
-            System.out.println("Error al cargar seguidos: " + e.getMessage());
+            System.out.println("Error al cargar contactos: " + e.getMessage());
         }
     }
 
@@ -1847,16 +2588,45 @@ public class GUI extends JFrame {
         this.usuarioChatActivo = usernameAmigo;
         lblNombreChat.setText("  " + usernameAmigo);
 
+        JPanel header = (JPanel) lblNombreChat.getParent();
+        for (Component c : header.getComponents()) {
+            if (c instanceof JButton && ((JButton) c).getText().contains("Eliminar")) {
+                c.setVisible(true);
+                break;
+            }
+        }
         // Abrir chat en lógica (carga historial del archivo)
         logica.abrirChat(usernameAmigo);
+        logica.setChatActivo(usernameAmigo);
+        logica.marcarMensajesLeidosEnMemoria(usernameAmigo); // nuevo método
+
+        new Thread(() -> {
+            try {
+                logica.notificarMensajesLeidos(usernameAmigo);
+            } catch (IOException e) {
+                System.out.println("No se pudo enviar ACK de leído: " + e.getMessage());
+            }
+        }).start();
 
         // Registrar listener para mensajes entrantes en tiempo real
         logica.setChatListener(new ChatListener() {
             @Override
             public void onMensajeRecibido(Mensaje mensaje) {
-                // Solo mostrar si el mensaje es del chat que tenemos abierto
-                if (mensaje.getEmisor().getUser().equals(usuarioChatActivo)) {
-                    añadirBurbuja(mensaje, false);
+                // ✅ Para cualquier mensaje (incluido ACK @@LEIDO@@), recargar burbujas
+                logica.marcarMensajesLeidosEnMemoria(usuarioChatActivo);
+                SwingUtilities.invokeLater(() -> {
+                    panelChatActual.removeAll();
+                    panelChatActual.setLayout(new BoxLayout(panelChatActual, BoxLayout.Y_AXIS));
+                    for (Mensaje m : logica.getMensajes()) {
+                        añadirBurbuja(m, m.esMio(logica.getUsuarioUser(0)));
+                    }
+                    panelChatActual.revalidate();
+                    panelChatActual.repaint();
+                });
+
+                // Solo guardar leído si no es un ACK
+                if (!"@@LEIDO@@".equals(mensaje.getContenido())) {
+                    new Thread(() -> logica.marcarMensajesLeidos(usuarioChatActivo)).start();
                 }
             }
 
@@ -1871,11 +2641,11 @@ public class GUI extends JFrame {
         // Limpiar y cargar historial en la UI
         panelChatActual.removeAll();
         panelChatActual.setLayout(new BoxLayout(panelChatActual, BoxLayout.Y_AXIS));
-
         for (Mensaje m : logica.getMensajes()) {
             boolean esMio = m.esMio(logica.getUsuarioUser(0));
             añadirBurbuja(m, esMio);
         }
+        new Thread(() -> logica.marcarMensajesLeidos(usernameAmigo)).start();
 
         panelChatActual.revalidate();
         panelChatActual.repaint();
@@ -1883,6 +2653,10 @@ public class GUI extends JFrame {
 
     private void añadirTarjetaMensaje(String username) {
         // 1. Evitar duplicados: Si ya existe una tarjeta para este usuario, no la creamos de nuevo
+        if (username.equals(logica.getUsuarioUser(0))) {
+            return;
+        }
+
         for (Component c : contenedorTarjetas.getComponents()) {
             if (c instanceof JPanel) {
                 JLabel lbl = (JLabel) ((JPanel) c).getClientProperty("userLabel");
@@ -1903,18 +2677,23 @@ public class GUI extends JFrame {
         tarjeta.putClientProperty("userLabel", new JLabel(username));
 
         // 3. Foto de perfil (puedes adaptarlo para que use logica.getUsuarioFoto si lo deseas)
-        JPanel fotoMini = new JPanel() {
-            @Override
-            protected void paintComponent(Graphics g) {
-                super.paintComponent(g);
-                Graphics2D g2 = (Graphics2D) g;
-                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-                g2.setColor(new Color(230, 230, 230));
-                g2.fillOval(0, 0, 45, 45); // Círculo gris de placeholder
-            }
-        };
-        fotoMini.setPreferredSize(new Dimension(45, 45));
-        fotoMini.setOpaque(false);
+        JLabel lblFotoMini = new JLabel();
+        lblFotoMini.setPreferredSize(new Dimension(45, 45));
+
+// Buscar la foto del usuario
+        logica.setUsuarioSelec(username);
+        ImageIcon fotoUser = logica.getUsuarioFoto(1);
+        if (fotoUser != null) {
+            // Foto circular
+            Image img = fotoUser.getImage().getScaledInstance(45, 45, Image.SCALE_SMOOTH);
+            lblFotoMini.setIcon(new ImageIcon(img));
+        } else {
+            lblFotoMini.setOpaque(true);
+            lblFotoMini.setBackground(new Color(230, 230, 230));
+            lblFotoMini.setHorizontalAlignment(SwingConstants.CENTER);
+            lblFotoMini.setText("👤");
+            lblFotoMini.setFont(new Font("SansSerif", Font.PLAIN, 18));
+        }
 
         // 4. Nombre y último mensaje (opcional)
         JPanel info = new JPanel(new GridLayout(2, 1));
@@ -1930,7 +2709,7 @@ public class GUI extends JFrame {
         info.add(lblNombre);
         info.add(lblEstado);
 
-        tarjeta.add(fotoMini, BorderLayout.WEST);
+        tarjeta.add(lblFotoMini, BorderLayout.WEST);
         tarjeta.add(info, BorderLayout.CENTER);
 
         // 5. EVENTO: Al hacer clic, cargar ese chat
@@ -2163,16 +2942,13 @@ public class GUI extends JFrame {
 
         construirSidebar();
 
-        // --- ÁREA CENTRAL ---
+        // Marcar todas como vistas al abrir
+        logica.marcarNotificacionesVistas();
+
         JPanel areaNotif = new JPanel();
         areaNotif.setLayout(new BoxLayout(areaNotif, BoxLayout.Y_AXIS));
         areaNotif.setBackground(Color.WHITE);
         areaNotif.setBorder(BorderFactory.createEmptyBorder(20, 40, 20, 40));
-
-        JLabel lblSeccionSoli = new JLabel("Solicitudes de amistad");
-        lblSeccionSoli.setFont(new Font("SansSerif", Font.BOLD, 16));
-        areaNotif.add(lblSeccionSoli);
-        areaNotif.add(Box.createVerticalStrut(10));
 
         JLabel titulo = new JLabel("Notificaciones");
         titulo.setFont(new Font("SansSerif", Font.BOLD, 24));
@@ -2180,18 +2956,55 @@ public class GUI extends JFrame {
         areaNotif.add(titulo);
         areaNotif.add(Box.createVerticalStrut(20));
 
-        // --- CARGAR NOTIFICACIONES ---
-        // Aquí podrías tener una lista de objetos "Notificacion" en tu lógica
-        // Por ahora, simularemos los dos tipos que pediste:
-        // Ejemplo 1: Mensaje Nuevo
-        areaNotif.add(crearTarjetaNotificacion("Mensaje", "emy_ca te envió un mensaje", "💬"));
-        areaNotif.add(Box.createVerticalStrut(10));
+        // ── Solicitudes de following (estado 2) ───────────────────
+        ArrayList<String> solicitudes = logica.getSolicitudesPendientes();
+        if (!solicitudes.isEmpty()) {
+            JLabel lblSec = new JLabel("Solicitudes de seguimiento");
+            lblSec.setFont(new Font("SansSerif", Font.BOLD, 16));
+            lblSec.setAlignmentX(Component.LEFT_ALIGNMENT);
+            areaNotif.add(lblSec);
+            areaNotif.add(Box.createVerticalStrut(10));
 
-        // Ejemplo 2: Solicitud de Amistad
-        areaNotif.add(crearTarjetaSolicitud("usuario", "foto"));
-        areaNotif.add(Box.createVerticalStrut(10));
+            for (String solicitante : solicitudes) {
+                logica.setUsuarioSelec(solicitante);
+                ImageIcon foto = logica.getUsuarioFoto(1);
+                JPanel tarjeta = crearTarjetaSolicitud(solicitante, foto, areaNotif);
+                tarjeta.setAlignmentX(Component.LEFT_ALIGNMENT);
+                areaNotif.add(tarjeta);
+                areaNotif.add(Box.createVerticalStrut(10));
+            }
+            areaNotif.add(Box.createVerticalStrut(10));
+        }
 
-        // Scroll
+        // ── Notificaciones guardadas (seguidor nuevo + mensajes) ───
+        ArrayList<Notificacion> notifs = logica.leerNotificaciones(logica.getUsuarioUser(0));
+        if (!notifs.isEmpty()) {
+            JLabel lblOtras = new JLabel("Actividad reciente");
+            lblOtras.setFont(new Font("SansSerif", Font.BOLD, 16));
+            lblOtras.setAlignmentX(Component.LEFT_ALIGNMENT);
+            areaNotif.add(lblOtras);
+            areaNotif.add(Box.createVerticalStrut(10));
+
+            // Mostrar más recientes primero
+            for (int i = notifs.size() - 1; i >= 0; i--) {
+                Notificacion n = notifs.get(i);
+                String icono = n.getTipo() == Notificacion.Tipo.MENSAJE ? "💬"
+                        : n.getTipo() == Notificacion.Tipo.SEGUIDOR ? "👤" : "🔔";
+
+                JPanel tarjeta = crearTarjetaNotificacionConAccion(n, icono, areaNotif, i);
+                tarjeta.setAlignmentX(Component.LEFT_ALIGNMENT);
+                areaNotif.add(tarjeta);
+                areaNotif.add(Box.createVerticalStrut(8));
+            }
+        }
+
+        if (solicitudes.isEmpty() && notifs.isEmpty()) {
+            JLabel vacio = new JLabel("No tienes notificaciones.");
+            vacio.setForeground(Color.GRAY);
+            vacio.setAlignmentX(Component.LEFT_ALIGNMENT);
+            areaNotif.add(vacio);
+        }
+
         JScrollPane scroll = new JScrollPane(areaNotif);
         scroll.setBorder(null);
         scroll.getVerticalScrollBar().setUnitIncrement(15);
@@ -2199,13 +3012,90 @@ public class GUI extends JFrame {
         panel.add(sidebarPanel, BorderLayout.WEST);
         panel.add(scroll, BorderLayout.CENTER);
 
+        add(contenedor);
         revalidate();
         repaint();
     }
 
-    private JPanel crearTarjetaNotificacion(String tipo, String texto, String icono) {
+// Tarjeta de solicitud de seguimiento
+    private JPanel crearTarjetaSolicitud(String nombreUsuario, ImageIcon foto, JPanel contenedor) {
         JPanel tarjeta = new JPanel(new BorderLayout(15, 0));
-        tarjeta.setBackground(new Color(250, 250, 250));
+        tarjeta.setBackground(Color.WHITE);
+        tarjeta.setMaximumSize(new Dimension(850, 80));
+        tarjeta.setPreferredSize(new Dimension(850, 80));
+        tarjeta.setBorder(BorderFactory.createMatteBorder(0, 0, 1, 0, new Color(230, 230, 230)));
+
+        JPanel infoPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 15));
+        infoPanel.setOpaque(false);
+
+        JLabel lblFoto = new JLabel();
+        lblFoto.setPreferredSize(new Dimension(50, 50));
+        if (foto != null) {
+            Image img = foto.getImage().getScaledInstance(50, 50, Image.SCALE_SMOOTH);
+            lblFoto.setIcon(new ImageIcon(img));
+        } else {
+            lblFoto.setOpaque(true);
+            lblFoto.setBackground(Color.LIGHT_GRAY);
+            lblFoto.setText("👤");
+            lblFoto.setHorizontalAlignment(SwingConstants.CENTER);
+        }
+
+        JLabel lblTexto = new JLabel("<html><b>" + nombreUsuario + "</b> quiere seguirte.</html>");
+        lblTexto.setFont(new Font("SansSerif", Font.PLAIN, 14));
+        infoPanel.add(lblFoto);
+        infoPanel.add(lblTexto);
+
+        JPanel botonesPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 20));
+        botonesPanel.setOpaque(false);
+
+        JButton btnConfirmar = new JButton("Confirmar");
+        btnConfirmar.setBackground(new Color(0, 149, 246));
+        btnConfirmar.setForeground(Color.WHITE);
+        btnConfirmar.setFocusPainted(false);
+        btnConfirmar.setFont(new Font("SansSerif", Font.BOLD, 12));
+        btnConfirmar.setBorder(BorderFactory.createEmptyBorder(8, 15, 8, 15));
+
+        JButton btnEliminar = new JButton("Eliminar");
+        btnEliminar.setBackground(new Color(239, 239, 239));
+        btnEliminar.setForeground(Color.BLACK);
+        btnEliminar.setFocusPainted(false);
+        btnEliminar.setFont(new Font("SansSerif", Font.BOLD, 12));
+        btnEliminar.setBorder(BorderFactory.createEmptyBorder(8, 15, 8, 15));
+
+        btnConfirmar.addActionListener(e -> {
+            try {
+                logica.confirmarSolicitud(nombreUsuario);
+                tarjeta.setVisible(false);
+                contenedor.revalidate();
+                contenedor.repaint();
+            } catch (IOException ex) {
+                System.out.println(ex.getMessage());
+            }
+        });
+
+        btnEliminar.addActionListener(e -> {
+            try {
+                logica.eliminarSolicitud(nombreUsuario);
+                tarjeta.setVisible(false);
+                contenedor.revalidate();
+                contenedor.repaint();
+            } catch (IOException ex) {
+                System.out.println(ex.getMessage());
+            }
+        });
+
+        botonesPanel.add(btnConfirmar);
+        botonesPanel.add(btnEliminar);
+        tarjeta.add(infoPanel, BorderLayout.WEST);
+        tarjeta.add(botonesPanel, BorderLayout.EAST);
+        return tarjeta;
+    }
+
+// Tarjeta de notificación con acción (mensaje o seguidor nuevo)
+    private JPanel crearTarjetaNotificacionConAccion(Notificacion notif, String icono,
+            JPanel contenedor, int index) {
+        JPanel tarjeta = new JPanel(new BorderLayout(15, 0));
+        tarjeta.setBackground(notif.isVista() ? Color.WHITE : new Color(245, 248, 255));
         tarjeta.setMaximumSize(new Dimension(800, 70));
         tarjeta.setPreferredSize(new Dimension(800, 70));
         tarjeta.setBorder(BorderFactory.createCompoundBorder(
@@ -2213,102 +3103,54 @@ public class GUI extends JFrame {
                 BorderFactory.createEmptyBorder(10, 15, 10, 15)
         ));
 
-        // Icono visual
         JLabel lblIcono = new JLabel(icono);
         lblIcono.setFont(new Font("Segoe UI Emoji", Font.PLAIN, 20));
         tarjeta.add(lblIcono, BorderLayout.WEST);
 
-        // Texto descriptivo
-        JLabel lblTexto = new JLabel(texto);
+        JLabel lblTexto = new JLabel(notif.getMensaje());
         lblTexto.setFont(new Font("SansSerif", Font.PLAIN, 14));
         tarjeta.add(lblTexto, BorderLayout.CENTER);
 
-        // Eventos de Mouse (Simulando el botón)
-        tarjeta.setCursor(new Cursor(Cursor.HAND_CURSOR));
-        tarjeta.addMouseListener(new java.awt.event.MouseAdapter() {
-            @Override
-            public void mouseClicked(java.awt.event.MouseEvent e) {
-                panelMensajes();
-            }
+        // Si es mensaje → redirigir al chat
+        if (notif.getTipo() == Notificacion.Tipo.MENSAJE) {
+            tarjeta.setCursor(new Cursor(Cursor.HAND_CURSOR));
+            tarjeta.addMouseListener(new java.awt.event.MouseAdapter() {
+                @Override
+                public void mouseClicked(java.awt.event.MouseEvent e) {
+                    panelMensajes();
+                    SwingUtilities.invokeLater(() -> {
+                        String remitente = notif.getDeQuienUser();
+                        añadirTarjetaMensaje(remitente);
+                        iniciarChatCon(remitente);
+                    });
+                }
 
-            @Override
-            public void mouseEntered(java.awt.event.MouseEvent e) {
-                tarjeta.setBackground(new Color(240, 240, 240));
-            }
+                @Override
+                public void mouseEntered(java.awt.event.MouseEvent e) {
+                    tarjeta.setBackground(new Color(240, 240, 240));
+                }
 
-            @Override
-            public void mouseExited(java.awt.event.MouseEvent e) {
-                tarjeta.setBackground(new Color(250, 250, 250));
-            }
-        });
-
-        return tarjeta;
-    }
-
-    private JPanel crearTarjetaSolicitud(String nombreUsuario, String fotoRuta) {
-        JPanel tarjeta = new JPanel(new BorderLayout(15, 0));
-        tarjeta.setBackground(Color.WHITE);
-        tarjeta.setMaximumSize(new Dimension(850, 80));
-        tarjeta.setPreferredSize(new Dimension(850, 80));
-        tarjeta.setBorder(BorderFactory.createMatteBorder(0, 0, 1, 0, new Color(230, 230, 230)));
-
-        // --- LADO IZQUIERDO: Foto y Texto ---
-        JPanel infoPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 15));
-        infoPanel.setOpaque(false);
-
-        // Foto de perfil circular (simulada con un JLabel)
-        JLabel lblFoto = new JLabel();
-        lblFoto.setPreferredSize(new Dimension(50, 50));
-        try {
-            ImageIcon icon = new ImageIcon(fotoRuta);
-            Image img = icon.getImage().getScaledInstance(50, 50, Image.SCALE_SMOOTH);
-            lblFoto.setIcon(new ImageIcon(img));
-        } catch (Exception e) {
-            lblFoto.setOpaque(true);
-            lblFoto.setBackground(Color.LIGHT_GRAY);
+                @Override
+                public void mouseExited(java.awt.event.MouseEvent e) {
+                    tarjeta.setBackground(notif.isVista() ? Color.WHITE : new Color(245, 248, 255));
+                }
+            });
         }
 
-        JLabel lblTexto = new JLabel("<html><b>" + nombreUsuario + "</b> quiere seguirte.</html>");
-        lblTexto.setFont(new Font("SansSerif", Font.PLAIN, 14));
-
-        infoPanel.add(lblFoto);
-        infoPanel.add(lblTexto);
-
-        // --- LADO DERECHO: Botones de Acción ---
-        JPanel botonesPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 20));
-        botonesPanel.setOpaque(false);
-
-        JButton btnConfirmar = new JButton("Confirmar");
-        btnConfirmar.setBackground(new Color(0, 149, 246)); // Azul Instagram
-        btnConfirmar.setForeground(Color.WHITE);
-        btnConfirmar.setFocusPainted(false);
-        btnConfirmar.setFont(new Font("SansSerif", Font.BOLD, 12));
-        btnConfirmar.setBorder(BorderFactory.createEmptyBorder(8, 15, 8, 15));
-
-        JButton btnEliminar = new JButton("Eliminar");
-        btnEliminar.setBackground(new Color(239, 239, 239)); // Gris claro
-        btnEliminar.setForeground(Color.BLACK);
-        btnEliminar.setFocusPainted(false);
-        btnEliminar.setFont(new Font("SansSerif", Font.BOLD, 12));
-        btnEliminar.setBorder(BorderFactory.createEmptyBorder(8, 15, 8, 15));
-
-        // --- EVENTOS ---
-        btnConfirmar.addActionListener(e -> {
-            // Aquí llamas a tu lógica para aceptar: logica.aceptarSolicitud(nombreUsuario);
-            JOptionPane.showMessageDialog(this, "Ahora sigues a " + nombreUsuario);
-            tarjeta.setVisible(false); // Desaparece al procesar
-        });
-
-        btnEliminar.addActionListener(e -> {
-            // Aquí llamas a tu lógica para borrar: logica.eliminarSolicitud(nombreUsuario);
+        // Botón X para eliminar la notificación
+        JButton btnX = new JButton("✕");
+        btnX.setFont(new Font("SansSerif", Font.PLAIN, 11));
+        btnX.setContentAreaFilled(false);
+        btnX.setBorderPainted(false);
+        btnX.setForeground(Color.GRAY);
+        btnX.setCursor(new Cursor(Cursor.HAND_CURSOR));
+        btnX.addActionListener(e -> {
+            logica.eliminarNotificacion(logica.getUsuarioUser(0), index);
             tarjeta.setVisible(false);
+            contenedor.revalidate();
+            contenedor.repaint();
         });
-
-        botonesPanel.add(btnConfirmar);
-        botonesPanel.add(btnEliminar);
-
-        tarjeta.add(infoPanel, BorderLayout.WEST);
-        tarjeta.add(botonesPanel, BorderLayout.EAST);
+        tarjeta.add(btnX, BorderLayout.EAST);
 
         return tarjeta;
     }

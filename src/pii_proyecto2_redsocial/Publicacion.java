@@ -5,6 +5,7 @@
 package pii_proyecto2_redsocial;
 
 import java.awt.Image;
+import java.io.Serializable;
 import java.util.Date;
 import javax.swing.ImageIcon;
 import java.text.SimpleDateFormat;
@@ -14,7 +15,7 @@ import java.util.ArrayList;
  *
  * @author emyca
  */
-public class Publicacion {
+public class Publicacion implements Serializable{
     private static final long serialVersionUID = 1L;
     
     private String autor;
@@ -63,14 +64,41 @@ public class Publicacion {
         return ruta.substring(ruta.lastIndexOf(".") + 1).toLowerCase();
     }
 
-    public String getTipoMultimedia() { return tipoMultimedia; }
-    public String getAutor() { return autor; }
-    public String getContenido() { return contenido; }
-    public String getRutaImagen() { return rutaImagen; }
-    public String getFormato() { return formato; }
-    public ArrayList<String> getHashtags() { return hashtags; }
-    public ArrayList<String> getMenciones() { return menciones; }
-    public ArrayList<String> getComentarios() { return comentarios; }
+    public String getTipoMultimedia() {
+        return tipoMultimedia;
+    }
+
+    public String getAutor() {
+        return autor;
+    }
+
+    public String getContenido() {
+        return contenido;
+    }
+
+    public String getRutaImagen() {
+        return rutaImagen;
+    }
+
+    public String getFormato() {
+        return formato!=null? formato: "Cuadrada";
+    }
+
+    public ArrayList<String> getHashtags() {
+        return hashtags;
+    }
+
+    public ArrayList<String> getMenciones() {
+        return menciones;
+    }
+
+    public ArrayList<String> getComentarios() {
+        return comentarios;
+    }
+
+    public Date getFechaHora() {
+        return fechaHora;
+    }
     
     public String getFechaFormateada() {
         return new SimpleDateFormat("dd/MM/yy").format(fechaHora);

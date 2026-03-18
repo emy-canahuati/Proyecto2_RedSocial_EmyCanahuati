@@ -28,10 +28,8 @@ public abstract class Mensaje implements Serializable {
         this.leido = false;
     }
 
-    // Método abstracto para que cada tipo de mensaje valide su contenido
     public abstract void validarContenido();
     
-    // Getters necesarios para la GUI
     public abstract String getContenido(); 
 
     public Usuario getEmisor() { return emisor; }
@@ -44,7 +42,6 @@ public abstract class Mensaje implements Serializable {
     public boolean isLeido() { return leido; }
     public void marcarLeido() { this.leido = true; }
 
-    // Útil para la lógica de burbujas: ¿el emisor soy yo?
     public boolean esMio(String miUsername) {
         return emisor.getUser().equals(miUsername);
     }

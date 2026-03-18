@@ -4,7 +4,7 @@ public class MensajeTexto extends Mensaje {
     
     public MensajeTexto(Usuario emisor, Usuario receptor, String contenido) {
         super(emisor, receptor, contenido);
-        validarContenido(); // Aplicamos el límite de caracteres al crear
+        validarContenido(); 
     }
     
     @Override
